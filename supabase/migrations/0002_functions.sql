@@ -479,6 +479,10 @@ create function companies() returns jsonb language sql stable security definer s
   select coalesce(jsonb_agg(company_json(c) order by lower(c.name)), '[]') from companies c where me_id() is not null
 $$;
 
+create function my_companies() returns jsonb language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(company_json(c) order by lower(c.name)), '[]') from companies c where c.owner_id = me_id()
+$$;
+
 create function create_company(p_name text, p_slug text, p_about text, p_website text, p_logo_url text) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare v uuid := me_id(); s text := lower(trim(p_slug)); c companies;

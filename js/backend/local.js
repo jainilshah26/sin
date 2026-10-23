@@ -336,6 +336,7 @@ export function functions(s, uid) {
 
     /* work */
     companies() { me(); return [...s.companies].sort((a, b) => dateOrder(a.name.toLowerCase(), b.name.toLowerCase())).map(companyJson); },
+    my_companies() { const v = me(); return s.companies.filter(c => c.owner_id === v).sort((a, b) => dateOrder(a.name.toLowerCase(), b.name.toLowerCase())).map(companyJson); },
     create_company({ name, slug, about, website, logo_url }) {
       const v = me(), sl = trim(slug).toLowerCase(), n = trim(name);
       if (len(n) < 1 || len(n) > 80) fail("Name the company.");

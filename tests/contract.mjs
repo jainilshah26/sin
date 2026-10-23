@@ -217,6 +217,7 @@ await run(B, "my_applications");
 await run(C, "close_job", { id: job2.id });
 await expectError("This job is closed.", A, "apply_job", { job: job2.id, note: "" });
 await run(A, "companies"); await run(B, "get_company", { slug: "acme" });
+ok((await run(C, "my_companies")).length === 1 && (await run(A, "my_companies")).length === 0, "my companies");
 
 console.log("Notifications, search, moderation, blocks");
 const nb = await run(B, "notifications");
