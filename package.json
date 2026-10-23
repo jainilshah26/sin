@@ -1,0 +1,8 @@
+{
+  "name": "sin",
+  "private": true,
+  "type": "module",
+  "description": "Sin: feed, photos, chat, video and work in one app. Static site; `npm run build` bundles it into dist/.",
+  "scripts": { "build": "node scripts/build.mjs", "test": "node tests/contract.mjs" },
+  "devDependencies": { "esbuild": "^0.25.0", "pg": "^8.13.0" }
+}
