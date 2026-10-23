@@ -31,7 +31,7 @@ npm run e2e                      # two people in two tabs go through every mode 
 
 ## Going live
 
-1. Create a Supabase project. Run the three files in `supabase/migrations/` in order in the SQL editor (or `supabase db push`).
+1. Create a Supabase project. Run the three files in `supabase/migrations/` in order in the SQL editor (or `supabase db push`). `supabase/finish_setup.sql` does 0002 and 0003 in one paste and is safe to re-run.
 2. In Authentication → Providers, keep Email on. Turn off "Confirm email" while testing, or users must confirm before logging in.
 3. Put the project URL and publishable key in `js/config.js`.
 4. Import the repo in Vercel (it uses `vercel.json`: `npm run build`, output `dist/`).
