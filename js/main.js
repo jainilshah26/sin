@@ -67,10 +67,11 @@ function shell() {
       <span class="grow"></span>
       <a class="icon-btn" href="#/search" aria-label="Search">${icon("search")}</a>
       <a class="icon-btn" href="#/notifications" aria-label="Notifications">${icon("bell")}<i class="badge" id="nb" hidden></i></a>
-      <a href="#/u/${ctx.me.handle}" aria-label="Your profile" id="me-av">${avatar(ctx.me, 32)}</a>
+      <button class="me-btn" data-act="me-menu" aria-label="Your account: profile, settings, log out" id="me-av">${avatar(ctx.me, 32)}</button>
     </header>
     <main id="view"></main>
-    <nav class="tabs">${MODES.map(([m, label]) => html`<a href="#/${m}" data-mode="${m}">${icon(m)}<span>${label}</span>${m === "chat" ? html`<i class="badge" id="mb" hidden></i>` : ""}</a>`)}</nav>
+    <nav class="tabs">${MODES.map(([m, label]) => html`<a href="#/${m}" data-mode="${m}">${icon(m)}<span>${label}</span>${m === "chat" ? html`<i class="badge" id="mb" hidden></i>` : ""}</a>`)}
+      <button class="rail-out" data-act="signout">${icon("out")}<span>Log out</span></button></nav>
     <aside class="side" id="side"></aside>`.s;
   hydrate(app);
   sideAt = 0;
@@ -111,6 +112,19 @@ document.addEventListener("submit", async e => {
 
 const setCount = (btn, n, on, cls) => { btn.classList.toggle(cls, on); btn.querySelector("span").textContent = n || ""; };
 const global = {
+  async signout() { await api.signOut(); ctx.me = null; history.replaceState(null, "", location.pathname + location.search); start(); },
+  /* tapping your photo (top right) opens your account menu */
+  "me-menu"() {
+    const me = ctx.me;
+    const s = sheet(html`<div class="menu account">
+      <a class="person" href="#/u/${me.handle}" data-close>${avatar(me, 44)}<div class="grow"><b>${me.name}</b><div class="muted small">@${me.handle} · View profile</div></div></a>
+      <a href="#/u/${me.handle}?tab=work" data-close>${icon("work")} Professional profile</a>
+      <a href="#/settings" data-close>${icon("user")} Settings and password</a>
+      ${me.role === "mod" ? html`<a href="#/mod" data-close>${icon("shield")} Moderation queue</a>` : ""}
+      <button class="danger" data-x="out">${icon("out")} Log out</button>
+      <button data-close>Cancel</button></div>`);
+    s.el.querySelector("[data-x=out]").onclick = async () => { s.close(); try { await global.signout(); } catch (e) { toast(e.message, true); } };
+  },
   async "side-follow"(b) { await api.follow({ user: b.dataset.id }); b.textContent = "Following"; b.classList.add("ghost"); b.disabled = true; },
   async like(b) { const r = await api.toggle_like({ id: +b.dataset.id }); setCount(b, r.like_count, r.liked, "on-like"); },
   async repost(b) { const r = await api.repost({ id: +b.dataset.id }); setCount(b, r.repost_count, r.reposted, "on-repost"); toast(r.reposted ? "Reposted" : "Repost removed"); },
@@ -263,7 +277,7 @@ async function settings(el, { q }) {
       <div class="row"><label class="grow">Start<input type="date" name="start_date" required></label><label class="grow">End (empty if current)<input type="date" name="end_date"></label></div>
       <label>Description<textarea name="description" rows="2" maxlength="1000"></textarea></label><button class="btn">Add</button></form>
     <div class="card stack">${me.role === "mod" ? html`<a class="btn ghost" href="#/mod">${icon("shield")} Moderation queue</a>` : ""}
-      <button class="btn ghost" data-act="signout">${icon("out")} Sign out</button></div>
+      <button class="btn ghost" data-act="signout">${icon("out")} Log out</button></div>
     <form class="card stack" data-form="password"><h3>Change password</h3>
       <label>New password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
       <label>Type it again<input name="again" type="password" autocomplete="new-password" minlength="8" required></label>
@@ -278,7 +292,6 @@ async function settings(el, { q }) {
       const m = await (await import("./media.js")).photo(file); await saveMe({ avatar_url: m.thumb }); toast("Photo updated"); },
     "no-avatar": () => saveMe({ avatar_url: null }),
     password: async (f, v) => { if (v.password !== v.again) throw new Error("The two passwords don't match."); await api.setPassword(v.password); f.reset(); toast("Password changed"); },
-    signout: async () => { await api.signOut(); ctx.me = null; location.hash = ""; start(); },
   });
 }
 

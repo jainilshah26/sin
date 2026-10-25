@@ -160,7 +160,10 @@ try {
   await B.click("[data-act=unblock]");
 
   console.log("Forgot and change password");
-  await B.goto(URL_ + "#/settings"); await B.click("[data-act=signout]"); await B.waitForSelector("#auth");
+  await B.goto(URL_ + "#/feed"); await B.click("#me-av"); await B.waitForSelector(".menu.account");
+  ok(await B.isVisible(".menu.account >> text=Settings and password"), "your photo opens the account menu");
+  await B.click(".menu.account >> text=Log out"); await B.waitForSelector("#auth");
+  ok(await B.isVisible("text=Log in") && !(await B.isVisible(".tabs")), "log out from the account menu");
   await B.fill("[name=email]", "bob@example.com"); await B.click("#forgot"); await B.waitForSelector("#fp");
   ok(await B.inputValue("#fp [name=email]") === "bob@example.com", "forgot screen keeps the typed email");
   await B.click("#fp button"); await B.waitForSelector("text=Check your email");
@@ -186,6 +189,7 @@ try {
   await signUp(D, "cara@example.com", "Cara Diaz", "cara");
   await D.goto(URL_ + "#/feed?s=all"); await D.waitForSelector(".post"); await shot(D, "12-desktop-feed");
   await D.goto(URL_ + "#/video"); await D.waitForSelector(".vtile"); await D.click(".vtile .vtitle"); await D.waitForSelector(".watch"); await shot(D, "13-desktop-watch");
+  await D.click(".rail-out"); await D.waitForSelector("#auth"); ok(true, "log out from the side menu on a laptop");
 
   ok(errors.length === 0, "no errors in the console" + (errors.length ? ":\n    " + errors.join("\n    ") : ""));
 } catch (e) {
