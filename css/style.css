@@ -224,7 +224,9 @@ label.check input { width: auto; }
    laptop (1100px+): full side menu, two-pane chat, "up next" beside videos.  wide (1280px+): a right column with search and who to follow. */
 @media (min-width: 700px) {
   :root { --rail: 84px; --aside: 0px; --max: 100vw; }
-  #app { max-width: var(--max); display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); grid-template-rows: var(--head) 1fr; }
+  #app { max-width: var(--max); }
+  /* the menu + content grid only exists once signed in; sign-in and onboarding stay one centred column */
+  #app.shell { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); grid-template-rows: var(--head) 1fr; }
   .top { grid-column: 1 / -1; }
   .tabs { grid-column: 1; grid-row: 2; align-self: start; position: sticky; top: var(--head); height: calc(100vh - var(--head)); flex-direction: column; justify-content: flex-start;
     gap: 6px; padding: 12px 8px; border: 0; border-right: 1px solid var(--line); background: none; backdrop-filter: none; }
@@ -257,11 +259,11 @@ label.check input { width: auto; }
 }
 @media (min-width: 1280px) {
   :root { --max: 1320px; --aside: 340px; }
-  #app { grid-template-columns: var(--rail) minmax(0, 1fr) var(--aside); }
+  #app.shell { grid-template-columns: var(--rail) minmax(0, 1fr) var(--aside); }
   .side { display: block; grid-column: 3; grid-row: 2; position: sticky; top: var(--head); align-self: start; max-height: calc(100vh - var(--head)); overflow-y: auto; padding: 16px 20px; }
   /* video and chat use the whole width instead */
   body:is([data-mode="video"], [data-mode="chat"]) { --aside: 0px; }
-  body:is([data-mode="video"], [data-mode="chat"]) #app { grid-template-columns: var(--rail) minmax(0, 1fr); }
+  body:is([data-mode="video"], [data-mode="chat"]) #app.shell { grid-template-columns: var(--rail) minmax(0, 1fr); }
   body:is([data-mode="video"], [data-mode="chat"]) .side { display: none; }
 }
 .side .card { margin: 0 0 16px; }

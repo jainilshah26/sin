@@ -60,6 +60,7 @@ const setBadge = (sel, n) => { const el = $(sel); if (el) { el.textContent = n >
 
 /* ---------- shell ---------- */
 function shell() {
+  app.className = "shell";
   app.innerHTML = html`
     <header class="top">
       <a class="logo" href="#/feed">${CONFIG.name}</a>${cloud ? "" : html`<span class="chip warn" title="Accounts and posts live in this browser">offline</span>`}
@@ -289,6 +290,7 @@ async function mod(el) {
 
 /* ---------- sign in and onboarding ---------- */
 function authScreen(mode = "in") {
+  app.className = "";
   app.innerHTML = html`<div class="auth"><h1 class="logo big">${CONFIG.name}</h1>
     <p class="muted">Posts, photos, chat, videos and work. One account.</p>
     ${cloud ? "" : html`<p class="chip warn">Offline test mode: accounts live in this browser. Open a second tab to chat with yourself.</p>`}
@@ -306,6 +308,7 @@ function authScreen(mode = "in") {
   };
 }
 function onboard() {
+  app.className = "";
   app.innerHTML = html`<div class="auth"><h1 class="logo big">${CONFIG.name}</h1><form class="card stack" id="ob"><h3>Pick your handle</h3>
     <p class="muted small">One profile for every mode. You can add your work history later.</p>
     <label>Name<input name="name" required maxlength="50" autofocus></label>
@@ -325,7 +328,7 @@ async function start() {
     if (!s) return authScreen();
     ctx.me = ctx.me || await api.me();
     if (!ctx.me) return onboard();
-  } catch (e) { app.innerHTML = empty(e.message, html`<button class="btn" onclick="location.reload()">Try again</button>`).s; return; }
+  } catch (e) { app.className = ""; app.innerHTML = empty(e.message, html`<button class="btn" onclick="location.reload()">Try again</button>`).s; return; }
   shell(); route();
 }
 window.addEventListener("hashchange", route);
