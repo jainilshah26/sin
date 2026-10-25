@@ -49,6 +49,28 @@ export function functions(s, uid) {
   const isMember = (c, v) => s.conversation_members.some(m => m.conversation_id === c && m.user_id === v);
   const others = (c, v) => s.conversation_members.filter(m => m.conversation_id === c && m.user_id !== v).map(m => card(m.user_id)).sort(byHandle);
   const withHeadline = u => ({ ...card(u), headline: proJson(u).headline });
+  /* abuse protection, as in SQL: fixed-window rate limits, and media that must be this person's own upload */
+  const hit = (action, max, seconds) => {
+    const ms = seconds * 1000, key = `${uid}|${action}|${Math.floor(Date.now() / ms) * ms}`;
+    s.rate = s.rate || {}; s.rate[key] = (s.rate[key] || 0) + 1;
+    if (s.rate[key] > max) fail("You're doing that too fast. Please wait a little and try again.");
+    if (Math.random() < 0.01) for (const k in s.rate) if (+k.split("|")[2] < Date.now() - 2 * 864e5) delete s.rate[k];
+  };
+  const MEDIA_EXT = "(jpg|jpeg|png|webp|gif|mp4|webm|mov|m4v)";
+  const mediaOk = (u, v) => typeof u === "string" && (new RegExp(`^https://[a-z0-9]{8,40}\\.supabase\\.co/storage/v1/object/public/media/${v}/[A-Za-z0-9_-]{1,64}\\.${MEDIA_EXT}$`).test(u)
+    || new RegExp(`^idb:[A-Za-z0-9_-]{1,64}\\.${MEDIA_EXT}$`).test(u));   // offline mode keeps files in this browser
+  const num = (x, hi) => (typeof x === "number" ? Math.round(Math.min(Math.max(x, 0), hi)) : undefined);
+  const cleanMedia = (m, v, max) => {
+    if (m == null) return [];
+    if (!Array.isArray(m) || m.length > max) fail(`Up to ${max} photos or videos.`);
+    return m.map(e => {
+      if (!e || typeof e !== "object" || Array.isArray(e) || !["image", "video"].includes(e.type) || !mediaOk(e.url, v) || (e.thumb != null && !mediaOk(e.thumb, v)))
+        fail("That photo or video can't be used. Please upload it again.");
+      const o = { type: e.type, url: e.url, thumb: e.thumb ?? undefined, w: num(e.w, 10000), h: num(e.h, 10000), duration: num(e.duration, 86400) };
+      for (const k in o) if (o[k] === undefined) delete o[k];
+      return o;
+    });
+  };
   const requireMod = () => { const v = me(); if (P(v).role !== "mod") fail("Moderators only."); return v; };
   const dateOrder = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -70,6 +92,8 @@ export function functions(s, uid) {
       const p = P(me());
       if (len(trim(name)) < 1 || len(trim(name)) > 50) fail("Enter your name.");
       if (len(bio || "") > 300) fail("Keep your bio under 300 characters.");
+      if (avatar_url && !mediaOk(avatar_url, p.id)) fail("That photo can't be used. Please upload it again.");
+      hit("profile", 30, 3600);
       Object.assign(p, { name: trim(name), bio: bio || "", avatar_url: avatar_url || null });
       return meJson();
     },
@@ -94,6 +118,8 @@ export function functions(s, uid) {
       const v = me(), seen = new Set(), sk = [];
       for (const x of skills || []) { const t = trim(x); if (t && !seen.has(t.toLowerCase())) { seen.add(t.toLowerCase()); sk.push(t); } }
       if (sk.length > 30) fail("Up to 30 skills.");
+      if (sk.some(x => len(x) > 40)) fail("Keep each skill under 40 characters.");
+      hit("profile", 30, 3600);
       Object.assign(s.pro_profiles.find(x => x.user_id === v), { headline: trim(headline), location: trim(location), about: about || "", skills: sk, open_to_work: !!open_to_work });
       return proJson(v);
     },
@@ -101,6 +127,7 @@ export function functions(s, uid) {
       const v = me();
       if (!trim(title) || !trim(company_name) || !start_date) fail("Add a title, a company and a start date.");
       if (end_date && end_date < start_date) fail("The end date is before the start date.");
+      hit("profile", 30, 3600);
       const c = s.companies.find(c => c.name.toLowerCase() === trim(company_name).toLowerCase());
       const e = { id: id("experiences"), user_id: v, title: trim(title), company_name: trim(company_name), company_id: c ? c.id : null, start_date, end_date: end_date || null, description: description || "" };
       s.experiences.push(e);
@@ -113,6 +140,7 @@ export function functions(s, uid) {
       const v = me();
       if (user === v) fail("You can't follow yourself.");
       if (!exists(user) || blocked(v, user)) fail("Profile not found.");
+      hit("follow", 60, 3600);
       if (!s.follows.some(f => f.follower_id === v && f.followee_id === user)) { s.follows.push({ follower_id: v, followee_id: user, created_at: now() }); notify(user, v, "follow", null); }
       return { following: true };
     },
@@ -122,6 +150,7 @@ export function functions(s, uid) {
       if (user === v) fail("You can't connect with yourself.");
       if (!exists(user) || blocked(v, user)) fail("Profile not found.");
       const st = connState(v, user);
+      if (st === "none") hit("connect", 40, 86400);
       if (st === "incoming") { s.connections.find(c => c.requester_id === user && c.addressee_id === v).status = "accepted"; notify(user, v, "connect_accept", null); }
       else if (st === "none") { s.connections.push({ requester_id: v, addressee_id: user, status: "pending", created_at: now() }); notify(user, v, "connect_request", null); }
       return { connection: connState(v, user) };
@@ -157,8 +186,14 @@ export function functions(s, uid) {
 
     /* posts */
     create_post({ kind, body, title, media, reply_to }) {
-      const v = me(), b = trim(body), t = trim(title), m = media || [];
+      const v = me(), b = trim(body), t = trim(title);
+      let m = media || [];
       if (!Array.isArray(m) || m.length > 10) fail("Up to 10 photos or videos per post.");
+      m = cleanMedia(m, v, 10);
+      if ((b.match(/https?:\/\//gi) || []).length > 5) fail("Too many links in one post.");
+      const recent = new Date(Date.now() - 600e3).toISOString();
+      if (b && s.posts.some(x => x.author_id === v && x.body === b && x.repost_of == null && x.created_at > recent)) fail("You just posted that.");
+      hit("post", 10, 60); hit("post_day", 400, 86400);
       let parent = null;
       if (reply_to != null) { parent = visible(reply_to, v); if (kind !== "note") fail("Replies are text posts."); }
       if (kind === "note" && !b && !m.length) fail("Write something first.");
@@ -187,6 +222,7 @@ export function functions(s, uid) {
     },
     toggle_like({ id: i }) {
       const v = me(), p = visible(i, v), n = s.likes.length;
+      hit("like", 120, 60);
       s.likes = s.likes.filter(l => !(l.user_id === v && l.post_id === p.id));
       if (s.likes.length < n) { p.like_count = Math.max(p.like_count - 1, 0); return { liked: false, like_count: p.like_count }; }
       s.likes.push({ user_id: v, post_id: p.id, created_at: now() }); p.like_count++;
@@ -196,6 +232,7 @@ export function functions(s, uid) {
     repost({ id: i }) {
       const v = me(); let p = visible(i, v);
       if (p.repost_of != null) p = visible(p.repost_of, v);
+      hit("repost", 60, 3600);
       const mine = s.posts.find(r => r.author_id === v && r.repost_of === p.id);
       if (mine) { this.delete_post({ id: mine.id }); return { reposted: false, repost_count: p.repost_count }; }
       s.posts.push({ id: id("posts"), author_id: v, kind: "note", body: "", title: "", media: [], reply_to: null, repost_of: p.id,
@@ -220,7 +257,8 @@ export function functions(s, uid) {
     create_story({ media }) {
       const v = me();
       if (!media || typeof media !== "object" || Array.isArray(media) || !media.url) fail("Add a photo or video.");
-      const t = now(), st = { id: id("stories"), author_id: v, media, created_at: t, expires_at: new Date(Date.parse(t) + 864e5).toISOString() };
+      hit("story", 50, 86400);
+      const t = now(), st = { id: id("stories"), author_id: v, media: cleanMedia([media], v, 1)[0], created_at: t, expires_at: new Date(Date.parse(t) + 864e5).toISOString() };
       s.stories.push(st);
       return { id: st.id };
     },
@@ -237,6 +275,7 @@ export function functions(s, uid) {
     record_view({ id: i, position }) {
       const v = me(), p = visible(i, v), pos = Math.max(position || 0, 0);
       if (p.kind !== "video") fail("Only videos have a watch history.");
+      hit("view", 120, 60);
       const h = s.watch_history.find(h => h.user_id === v && h.post_id === p.id);
       if (h) Object.assign(h, { position: pos, watched_at: now() });
       else { s.watch_history.push({ user_id: v, post_id: p.id, position: pos, watched_at: now() }); p.view_count++; }
@@ -256,6 +295,7 @@ export function functions(s, uid) {
     create_playlist({ title }) {
       const v = me(), t = trim(title);
       if (len(t) < 1 || len(t) > 80) fail("Name the playlist.");
+      hit("playlist", 30, 86400);
       const l = { id: id("playlists"), owner_id: v, title: t, created_at: now() }; s.playlists.push(l);
       return { id: l.id, title: t, count: 0 };
     },
@@ -295,6 +335,7 @@ export function functions(s, uid) {
       if (!exists(user) || blocked(v, user)) fail("Profile not found.");
       let c = s.conversations.find(c => !c.is_group && isMember(c.id, v) && isMember(c.id, user));
       if (!c) {
+        hit("new_chat", 30, 3600);
         c = { id: id("conversations"), is_group: false, title: "", created_by: v, created_at: now(), last_message_id: 0 }; s.conversations.push(c);
         for (const u of [v, user]) s.conversation_members.push({ conversation_id: c.id, user_id: u, last_read_id: 0, joined_at: c.created_at });
       }
@@ -305,6 +346,8 @@ export function functions(s, uid) {
       if (len(t) < 1 || len(t) > 80) fail("Name the group.");
       const o = [...new Set(members || [])].filter(u => exists(u) && u !== v && !blocked(u, v));
       if (!o.length) fail("Add at least one person.");
+      if (o.length > 255) fail("Groups can have up to 256 people.");
+      hit("new_chat", 30, 3600);
       const c = { id: id("conversations"), is_group: true, title: t, created_by: v, created_at: now(), last_message_id: 0 }; s.conversations.push(c);
       for (const u of [...o, v]) s.conversation_members.push({ conversation_id: c.id, user_id: u, last_read_id: 0, joined_at: c.created_at });
       return { id: c.id };
@@ -317,12 +360,15 @@ export function functions(s, uid) {
         reads: Object.fromEntries(s.conversation_members.filter(m => m.conversation_id === c.id).map(m => [m.user_id, m.last_read_id])) };
     },
     send_message({ conv, body, media }) {
-      const v = me(), b = trim(body), md = media || [];
+      const v = me(), b = trim(body);
+      let md = media || [];
       if (!isMember(conv, v)) fail("Chat not found.");
       const c = s.conversations.find(c => c.id === conv);
       if (!c.is_group && s.conversation_members.some(m => m.conversation_id === conv && m.user_id !== v && blocked(v, m.user_id))) fail("You can't message this person.");
       if (!Array.isArray(md) || md.length > 10) fail("Up to 10 attachments.");
+      md = cleanMedia(md, v, 10);
       if (!b && !md.length) fail("Write a message first.");
+      hit("message", 30, 60); hit("message_day", 2000, 86400);
       const m = { id: id("messages"), conversation_id: conv, sender_id: v, body: b, media: md, created_at: now() };
       s.messages.push(m); c.last_message_id = m.id;
       s.conversation_members.find(x => x.conversation_id === conv && x.user_id === v).last_read_id = m.id;
@@ -342,6 +388,9 @@ export function functions(s, uid) {
       if (len(n) < 1 || len(n) > 80) fail("Name the company.");
       if (!/^[a-z0-9-]{2,40}$/.test(sl)) fail("The page address is 2-40 letters, numbers or -.");
       if (s.companies.some(c => c.slug === sl || c.name.toLowerCase() === n.toLowerCase())) fail("That company already has a page.");
+      if (logo_url && !mediaOk(logo_url, v)) fail("That logo can't be used. Please upload it again.");
+      if (trim(website) && !/^(https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}(\/\S*)?$/i.test(trim(website))) fail("Enter a valid website.");
+      hit("company", 3, 86400);
       const c = { id: id("companies"), slug: sl, name: n, about: about || "", website: trim(website), logo_url: logo_url || null, owner_id: v, created_at: now() };
       s.companies.push(c);
       for (const e of s.experiences) if (e.company_id == null && e.company_name.toLowerCase() === n.toLowerCase()) e.company_id = c.id;
@@ -366,6 +415,7 @@ export function functions(s, uid) {
       const t = trim(title);
       if (len(t) < 1 || len(t) > 100) fail("Give the job a title.");
       if (!["full_time", "part_time", "contract", "internship"].includes(type)) fail("Pick a job type.");
+      hit("job", 20, 86400);
       const j = { id: id("jobs"), company_id: company, posted_by: v, title: t, location: trim(location), remote: !!remote, employment_type: type, description: description || "", open: true, created_at: now() };
       s.jobs.push(j);
       return jobJson(j, v);
@@ -387,6 +437,7 @@ export function functions(s, uid) {
       if (!j || !j.open) fail("This job is closed.");
       if (canManage(j, v)) fail("You manage this job.");
       if (s.applications.some(a => a.job_id === j.id && a.applicant_id === v)) fail("You already applied.");
+      hit("apply", 50, 86400);
       s.applications.push({ id: id("applications"), job_id: j.id, applicant_id: v, note: note || "", status: "submitted", created_at: now() });
       notify(j.posted_by, v, "application", null, { job_id: j.id, title: j.title });
       return { applied: true };
@@ -425,7 +476,7 @@ export function functions(s, uid) {
         messages: s.conversation_members.filter(m => m.user_id === v).reduce((t, m) => t + s.messages.filter(x => x.conversation_id === m.conversation_id && x.id > m.last_read_id && x.sender_id !== v).length, 0) };
     },
     search({ q }) {
-      const v = me(), t = trim(q);
+      const v = me(), t = [...trim(q)].slice(0, 100).join("");
       if (!t) return { people: [], posts: [], videos: [], jobs: [], companies: [] };
       const ok = p => !p.hidden && !blocked(p.author_id, v);
       return {
@@ -440,6 +491,8 @@ export function functions(s, uid) {
       const v = me();
       if (!["post", "profile"].includes(type)) fail("You can report a post or a profile.");
       const r = trim(reason); if (len(r) < 1 || len(r) > 500) fail("Say what's wrong.");
+      if (len(String(target ?? "")) > 64) fail("Report not found.");
+      hit("report", 20, 3600);
       s.reports.push({ id: id("reports"), reporter_id: v, target_type: type, target_id: String(target), reason: r, status: "open", created_at: now() });
       return { ok: true };
     },

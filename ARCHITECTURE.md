@@ -36,10 +36,16 @@ One shell (header with search, notifications and you; a five-tab bar that become
 
 ## Security model
 
-- Every function is `security definer`, reads the caller from `auth.uid()`, checks permissions itself and raises plain-English errors. Only `authenticated` can execute them, not `anon`.
-- Tables have RLS on and no grants, apart from `select` on messages, conversation_members (members only) and notifications (own rows only), which Realtime needs.
-- Storage: public read, write only into `<your user id>/…`.
-- `tests/contract.mjs` checks these rules against a real Postgres, and checks that `js/backend/local.js` matches the SQL function by function. When you change one, change the other.
+Nothing online is unhackable; the aim is that every realistic route is closed or too slow to be worth it.
+
+- **Identity:** Supabase Auth (email + password, optional Turnstile CAPTCHA). Every database function reads the caller from `auth.uid()` and checks permissions itself; mistakes raise plain-English errors.
+- **Data access:** RLS is on for every table with no grants, apart from `select` on messages, conversation_members (members only) and notifications (own rows only), which Realtime needs. Only `authenticated` may call functions, and internal helpers (`notify`, `blocked`, `hit`, `clean_media`, …) can't be called directly, so nobody can fake a notification or read who blocked whom.
+- **Abuse limits:** `hit(action, max, window)` counts actions per person in fixed windows (table `rate_limits`, private). Limits: posts 10/min and 400/day; messages 30/min and 2000/day; likes 120/min; reposts 60/h; follows 60/h; new connection requests 40/day; new chats 30/h; stories 50/day; video views 120/min; playlists 30/day; profile edits 30/h; companies 3/day; jobs 20/day; applications 50/day; reports 20/h. Also: no identical post within 10 minutes, at most 5 links per post, search terms capped at 100 characters.
+- **Media:** `clean_media` only accepts files under `<project>.supabase.co/storage/v1/object/public/media/<caller id>/` with a photo/video extension, and keeps only known fields with capped numbers. Storage accepts only JPEG/PNG/WebP/GIF/MP4/WebM/MOV up to 200 MB, named `<caller id>/<id>.<ext>`, at most 200 a day per person.
+- **Browser:** all user text is escaped by the `html` template helper (no `innerHTML` with raw input). `vercel.json` sends a Content-Security-Policy (scripts only from this site and Cloudflare's CAPTCHA, connections only to this Supabase project, no plugins, no `<base>`, no framing), HSTS, `nosniff`, `DENY` framing, a strict referrer policy and a Permissions-Policy turning off camera, mic and location. There are no inline scripts (the build fails if one appears). The Supabase library is an npm dependency pinned to an exact version and bundled, so no CDN can change the running code.
+- **Tests:** `tests/contract.mjs` checks the rules above against a real Postgres (including RLS, storage policies and the limits) and that `js/backend/local.js` gives the same answers; `npm run e2e:dist` runs the app under the production headers and fails on any blocked resource.
+
+**Not covered yet:** end-to-end encrypted chat (see above), automatic image/text moderation, IP-level rate limits for anonymous traffic (Vercel Firewall / Cloudflare can add these), and two-factor login for users (Supabase supports TOTP; the UI isn't built).
 
 ## Next steps, roughly in order
 

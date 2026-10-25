@@ -4,4 +4,6 @@ export const CONFIG = {
   url: "https://ryiyjnvpueptqyeeavoy.supabase.co",
   key: "sb_publishable_DZHT44xUVeZKAtLOkv6B7g_WKesC0zf",
   name: "Sin",
+  // Cloudflare Turnstile site key (public). Empty = no bot check. See README "Bot protection".
+  captchaSiteKey: "",
 };

@@ -6,6 +6,7 @@ import { html, raw, $, icon, avatar, who, postCard, empty, loading, hydrate, toa
 import * as compose from "./compose.js";
 import { themePicker, setTheme } from "./theme.js";
 import { showcase, startShowcase } from "./welcome.js";
+import { captcha } from "./captcha.js";
 import * as feed from "./modes/feed.js";
 import * as photos from "./modes/photos.js";
 import * as chat from "./modes/chat.js";
@@ -324,6 +325,7 @@ function authScreen(mode = "in") {
         ${up ? html`<p class="muted small">It's free. Your one profile works across Feed, Photos, Chat, Video and Work.</p>` : ""}
         <label>Email<input name="email" type="email" autocomplete="email" required></label>
         <label>Password<input name="password" type="password" autocomplete="${up ? "new-password" : "current-password"}" minlength="8" required placeholder="${up ? "At least 8 characters" : ""}"></label>
+        <div class="captcha" hidden></div>
         <button class="btn">${up ? "Sign up" : "Log in"}</button>
         ${up ? "" : html`<button type="button" class="link small" id="forgot">Forgot password?</button>`}
         <p class="err" role="alert">${authLink.error || ""}</p></form>
@@ -336,10 +338,11 @@ function authScreen(mode = "in") {
   authLink.error = null;
   $("#swap").onclick = () => authScreen(mode === "in" ? "up" : "in");
   if ($("#forgot")) $("#forgot").onclick = () => forgotScreen($("#auth").email.value);
+  const check = captcha($("#auth .captcha"));
   $("#auth").onsubmit = async e => {
-    e.preventDefault(); const f = e.target, b = f.querySelector("button"); b.disabled = true;
-    try { await api[mode === "in" ? "signIn" : "signUp"](f.email.value, f.password.value); await start(); }
-    catch (err) { f.querySelector(".err").textContent = err.message; } finally { b.disabled = false; }
+    e.preventDefault(); const f = e.target, b = f.querySelector("button.btn"); b.disabled = true;
+    try { await api[up ? "signUp" : "signIn"](f.email.value, f.password.value, await check.token()); await start(); }
+    catch (err) { f.querySelector(".err").textContent = err.message; check.reset(); } finally { b.disabled = false; }
   };
 }
 /* step 1 of a reset: ask for the email and send the link */
@@ -349,18 +352,20 @@ function forgotScreen(email = "") {
     <form class="card stack" id="fp"><h3>Reset your password</h3>
       <p class="muted small">Enter the email you signed up with. We'll send you a link to choose a new password.</p>
       <label>Email<input name="email" type="email" autocomplete="email" value="${email}" required autofocus></label>
+      <div class="captcha" hidden></div>
       <button class="btn">Send reset link</button><p class="err" role="alert"></p></form>
     <button class="link" id="back-login">Back to log in</button></div>`.s;
   $("#back-login").onclick = () => authScreen();
+  const check = captcha($("#fp .captcha"));
   $("#fp").onsubmit = async e => {
     e.preventDefault(); const f = e.target, b = f.querySelector("button"); b.disabled = true;
     try {
-      const r = await api.requestReset(f.email.value);
+      const r = await api.requestReset(f.email.value, await check.token());
       f.innerHTML = html`<h3>Check your email</h3>
         <p>If <b>${f.email.value.trim()}</b> has an account, a link to reset your password is on its way. It can take a few minutes; check your spam folder too.</p>
         ${r.link ? html`<p class="chip warn">Offline test mode has no email. This is the link it would contain:</p><a class="btn" id="offline-link" href="${r.link}">Open reset link</a>` : ""}`.s;
       if (r.link) $("#offline-link").onclick = ev => { ev.preventDefault(); location.hash = r.link.split("#")[1]; start(); };
-    } catch (err) { f.querySelector(".err").textContent = err.message; b.disabled = false; }
+    } catch (err) { f.querySelector(".err").textContent = err.message; b.disabled = false; check.reset(); }
   };
 }
 

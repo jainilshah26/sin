@@ -12,13 +12,11 @@ export const onLive = f => (listeners.add(f), () => listeners.delete(f));
 
 /* ---------- cloud ---------- */
 let sbp = null;
+/* The Supabase library is bundled into the app (npm, pinned version), not loaded from a CDN at run time,
+   so no outside server can change the code that runs here. It is only fetched when the cloud is used. */
 function sb() {
-  return sbp ||= new Promise((res, rej) => {
-    const s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js";
-    s.onload = () => res(window.supabase.createClient(CONFIG.url, CONFIG.key));
-    s.onerror = () => { sbp = null; rej(new Error("Couldn't reach the server. Check your internet.")); };
-    document.head.appendChild(s);
-  });
+  return sbp ||= import("@supabase/supabase-js").then(({ createClient }) => createClient(CONFIG.url, CONFIG.key))
+    .catch(() => { sbp = null; throw new Error("Couldn't reach the server. Check your internet."); });
 }
 let channel = null;
 async function cloudLive(uid) {
@@ -97,12 +95,12 @@ export const api = new Proxy({
     if (session && cloud) cloudLive(session.uid);
     return session;
   },
-  async signUp(email, password) {
+  async signUp(email, password, captchaToken) {
     email = String(email).trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Enter a valid email.");
     if (String(password).length < 8) throw new Error("Use at least 8 characters for your password.");
     if (cloud) {
-      const { data, error } = await (await sb()).auth.signUp({ email, password });
+      const { data, error } = await (await sb()).auth.signUp({ email, password, options: { captchaToken } });
       if (error) throw new Error(error.message);
       if (!data.session) throw new Error("Check your email to confirm your account, then log in.");
       session = { uid: data.user.id }; cloudLive(session.uid); return session;
@@ -111,10 +109,10 @@ export const api = new Proxy({
     const id = crypto.randomUUID(); s.users.push({ id, email, hash: await sha(email + ":" + password) }); localStorage.setItem(DBK, JSON.stringify(s));
     setLocalUid(id); session = { uid: id }; return session;
   },
-  async signIn(email, password) {
+  async signIn(email, password, captchaToken) {
     email = String(email).trim().toLowerCase();
     if (cloud) {
-      const { data, error } = await (await sb()).auth.signInWithPassword({ email, password });
+      const { data, error } = await (await sb()).auth.signInWithPassword({ email, password, options: { captchaToken } });
       if (error) throw new Error(error.message === "Invalid login credentials" ? "Wrong email or password." : error.message);
       session = { uid: data.user.id }; cloudLive(session.uid); return session;
     }
@@ -123,11 +121,11 @@ export const api = new Proxy({
     setLocalUid(u.id); session = { uid: u.id }; return session;
   },
   /* Sends a reset link. Says nothing about whether the email has an account, so it can't be used to find out who is a member. */
-  async requestReset(email) {
+  async requestReset(email, captchaToken) {
     email = String(email).trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Enter a valid email.");
     if (cloud) {
-      const { error } = await (await sb()).auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+      const { error } = await (await sb()).auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname, captchaToken });
       if (error) throw new Error(/rate limit|security purposes/i.test(error.message) ? "Too many reset emails. Wait a few minutes and try again." : error.message);
       return {};
     }

@@ -59,14 +59,18 @@ async function run(uid, name, args = {}) {
   }
   return local;
 }
+/* test setup that needs many quick actions (e.g. 22 posts for paging) clears the flood counters on both sides first */
+const resetLimits = async () => { state.rate = {}; if (pg) await pg.query("delete from rate_limits"); };
 const expectError = async (msg, ...a) => { const r = await run(...a); ok(r && r.error === msg, `${a[1]} should fail with "${msg}", got ${JSON.stringify(r)}`); return r; };
 
 /* ---------- the scenario ---------- */
 const U = { alice: "00000000-0000-4000-8000-00000000000a", bob: "00000000-0000-4000-8000-00000000000b", cara: "00000000-0000-4000-8000-00000000000c", dan: "00000000-0000-4000-8000-00000000000d" };
 const { alice: A, bob: B, cara: C, dan: D } = U;
 if (pg) for (const [n, id] of Object.entries(U)) await pg.query("insert into auth.users (id, email) values ($1, $2)", [id, n + "@example.com"]);
-const img = { url: "https://x/p.jpg", thumb: "https://x/t.jpg", type: "image", w: 1080, h: 1080 };
-const vid = { url: "https://x/v.mp4", thumb: "https://x/v.jpg", type: "video", w: 1920, h: 1080, duration: 90 };
+/* media must be the person's own upload in this project's storage */
+const file = (u, name) => `https://abcdefghijklmnopqrst.supabase.co/storage/v1/object/public/media/${u}/${name}`;
+const img = u => ({ url: file(u, "p1.jpg"), thumb: file(u, "t1.jpg"), type: "image", w: 1080, h: 1080 });
+const vid = u => ({ url: file(u, "v1.mp4"), thumb: file(u, "v1.jpg"), type: "video", w: 1920, h: 1080, duration: 90 });
 
 console.log("\nAccounts and profiles");
 await expectError("Sign in first.", null, "badges");
@@ -79,7 +83,9 @@ ok((await run(B, "create_profile", { handle: "bob", name: "Bob Ray" })).role ===
 await run(C, "create_profile", { handle: "cara", name: "Cara Diaz" });
 await run(D, "create_profile", { handle: "dan_k", name: "Dan K" });
 await expectError("You already have a profile.", D, "create_profile", { handle: "dan2", name: "Dan" });
-await run(A, "update_profile", { name: "Alice N.", bio: "Builder", avatar_url: "https://x/a.jpg" });
+await run(A, "update_profile", { name: "Alice N.", bio: "Builder", avatar_url: file(A, "a.jpg") });
+await expectError("That photo can't be used. Please upload it again.", A, "update_profile", { name: "Alice", bio: "", avatar_url: "https://evil.example/track.gif" });
+await expectError("That photo can't be used. Please upload it again.", A, "update_profile", { name: "Alice", bio: "", avatar_url: file(B, "b.jpg") });
 await expectError("Enter your name.", A, "update_profile", { name: "  ", bio: "", avatar_url: null });
 const pro = await run(B, "update_pro", { headline: "Engineer", location: "Pune", about: "Hi", skills: ["Go", " SQL ", "go", ""], open_to_work: true });
 ok(JSON.stringify(pro.skills) === '["Go","SQL"]', "skills trimmed and de-duplicated");
@@ -110,15 +116,19 @@ console.log("Posts, replies, likes, reposts");
 const n1 = await run(B, "create_post", { kind: "note", body: "  hello world  ", title: "", media: [], reply_to: null });
 ok(n1.body === "hello world" && n1.mine, "note posted");
 await expectError("Write something first.", B, "create_post", { kind: "note", body: " ", title: "", media: [], reply_to: null });
-await expectError("Add at least one photo.", B, "create_post", { kind: "photo", body: "", title: "", media: [vid], reply_to: null });
-await expectError("Give your video a title.", B, "create_post", { kind: "video", body: "", title: "", media: [vid], reply_to: null });
+await expectError("Add at least one photo.", B, "create_post", { kind: "photo", body: "", title: "", media: [vid(B)], reply_to: null });
+await expectError("Give your video a title.", B, "create_post", { kind: "video", body: "", title: "", media: [vid(B)], reply_to: null });
 await expectError("Unknown post type.", B, "create_post", { kind: "poll", body: "x", title: "", media: [], reply_to: null });
-const ph = await run(A, "create_post", { kind: "photo", body: "sunset #nofilter", title: "", media: [img, img], reply_to: null });
-const v1 = await run(B, "create_post", { kind: "video", body: "how we built it", title: "Building Sin", media: [vid], reply_to: null });
-const v2 = await run(C, "create_post", { kind: "video", body: "", title: "Cara vlog 1", media: [vid], reply_to: null });
+const ph = await run(A, "create_post", { kind: "photo", body: "sunset #nofilter", title: "", media: [img(A), { ...img(A), extra: "<script>", w: 99999 }], reply_to: null });
+ok(ph.media[1].w === 10000 && !("extra" in ph.media[1]), "media is cleaned: unknown fields dropped, sizes capped");
+await expectError("That photo or video can't be used. Please upload it again.", A, "create_post", { kind: "photo", body: "", title: "", media: [{ ...img(A), url: "javascript:alert(1)" }], reply_to: null });
+await expectError("That photo or video can't be used. Please upload it again.", A, "create_post", { kind: "photo", body: "", title: "", media: [img(B)], reply_to: null });
+await expectError("That photo or video can't be used. Please upload it again.", A, "create_post", { kind: "photo", body: "", title: "", media: [{ ...img(A), thumb: "https://tracker.example/p.gif" }], reply_to: null });
+const v1 = await run(B, "create_post", { kind: "video", body: "how we built it", title: "Building Sin", media: [vid(B)], reply_to: null });
+const v2 = await run(C, "create_post", { kind: "video", body: "", title: "Cara vlog 1", media: [vid(C)], reply_to: null });
 const r1 = await run(A, "create_post", { kind: "note", body: "nice!", title: "", media: [], reply_to: n1.id });
 await run(C, "create_post", { kind: "note", body: "great video", title: "", media: [], reply_to: v1.id });
-await expectError("Replies are text posts.", C, "create_post", { kind: "photo", body: "", title: "", media: [img], reply_to: n1.id });
+await expectError("Replies are text posts.", C, "create_post", { kind: "photo", body: "", title: "", media: [img(C)], reply_to: n1.id });
 ok((await run(A, "toggle_like", { id: n1.id })).like_count === 1, "like");
 await run(C, "toggle_like", { id: n1.id });
 ok((await run(C, "toggle_like", { id: n1.id })).liked === false, "unlike");
@@ -137,7 +147,7 @@ await run(A, "list_posts", { kind: "video", scope: "all", author: null, before: 
 const gp = await run(C, "get_post", { id: n1.id });
 ok(gp.replies.length === 1 && gp.post.reply_count === 1, "thread");
 await run(C, "get_post", { id: r1.id });
-for (let i = 0; i < 22; i++) await run(D, "create_post", { kind: "note", body: "spam " + i, title: "", media: [], reply_to: null });
+for (let i = 0; i < 22; i++) { if (i % 9 === 0) await resetLimits(); await run(D, "create_post", { kind: "note", body: "spam " + i, title: "", media: [], reply_to: null }); }
 const page1 = await run(D, "list_posts", { kind: "note", scope: "author", author: D, before: null });
 const page2 = await run(D, "list_posts", { kind: "note", scope: "author", author: D, before: page1.at(-1).id });
 ok(page1.length === 20 && page2.length === 2, "pagination");
@@ -149,7 +159,8 @@ ok((await run(B, "get_post", { id: n1.id })).post.reply_count === 1, "deleting a
 
 console.log("Stories");
 await expectError("Add a photo or video.", A, "create_story", { media: [] });
-await run(B, "create_story", { media: img }); await run(A, "create_story", { media: img }); await run(B, "create_story", { media: vid });
+await run(B, "create_story", { media: img(B) }); await run(A, "create_story", { media: img(A) }); await run(B, "create_story", { media: vid(B) });
+await expectError("That photo or video can't be used. Please upload it again.", A, "create_story", { media: { type: "image", url: "https://evil.example/x.jpg" } });
 const st = await run(A, "stories");
 ok(st.length === 2 && st[0].author.id === A && st[1].items.length === 2, "own stories first, grouped by author");
 await run(D, "stories");
@@ -174,7 +185,8 @@ const dm = await run(A, "open_dm", { user: B });
 ok((await run(B, "open_dm", { user: A })).id === dm.id, "one DM per pair");
 await expectError("Write a message first.", A, "send_message", { conv: dm.id, body: " ", media: [] });
 await run(A, "send_message", { conv: dm.id, body: "hey bob", media: [] });
-await run(A, "send_message", { conv: dm.id, body: "", media: [img] });
+await run(A, "send_message", { conv: dm.id, body: "", media: [img(A)] });
+await expectError("That photo or video can't be used. Please upload it again.", A, "send_message", { conv: dm.id, body: "", media: [img(B)] });
 await expectError("Chat not found.", C, "send_message", { conv: dm.id, body: "let me in", media: [] });
 await expectError("Chat not found.", C, "get_messages", { conv: dm.id, before: null });
 ok((await run(B, "badges")).messages === 2, "two unread");
@@ -255,6 +267,25 @@ await run(B, "delete_post", { id: n1.id });
 await run(A, "list_posts", { kind: "note", scope: "following", author: null, before: null });
 await run(A, "notifications");
 
+console.log("Spam and flood protection");
+await resetLimits();
+await expectError("You just posted that.", D, "create_post", { kind: "note", body: "spam 19", title: "", media: [], reply_to: null });
+await expectError("Too many links in one post.", D, "create_post", { kind: "note", body: "http://a.io http://b.io https://c.io http://d.io http://e.io https://f.io", title: "", media: [], reply_to: null });
+{ // 10 posts a minute is the limit
+  let blocked = null;
+  for (let i = 0; i < 12 && !blocked; i++) { const r = await run(C, "create_post", { kind: "note", body: "burst " + i, title: "", media: [], reply_to: null }); if (r && r.error) blocked = r.error; }
+  ok(blocked === "You're doing that too fast. Please wait a little and try again.", "posting is rate limited");
+}
+{ // 20 reports an hour
+  let blocked = null;
+  for (let i = 0; i < 25 && !blocked; i++) { const r = await run(C, "report", { type: "profile", target: D, reason: "test " + i }); if (r && r.error) blocked = r.error; }
+  ok(blocked === "You're doing that too fast. Please wait a little and try again.", "reports are rate limited");
+}
+await expectError("Report not found.", C, "report", { type: "post", target: "x".repeat(65), reason: "long" });
+await expectError("Enter a valid website.", B, "create_company", { name: "Evil", slug: "evil", about: "", website: "javascript:alert(1)", logo_url: null });
+await expectError("That logo can't be used. Please upload it again.", B, "create_company", { name: "Evil", slug: "evil", about: "", website: "", logo_url: "https://evil.example/l.png" });
+await run(A, "search", { q: "a".repeat(500) });
+
 /* ---------- Postgres-only: what the public key can and can't do ---------- */
 if (pg) {
   console.log("Row level security");
@@ -271,6 +302,16 @@ if (pg) {
   ok(await pg.query("select public.badges()").then(() => false, () => true), "anon can't call functions"); await pg.query("rollback");
   ok((await asUser(B, `select public.notify('${A}', '${C}', 'like', null)`)).error?.includes("permission denied"), "helpers like notify can't be called directly");
   ok((await asUser(B, `select public.blocked('${A}', '${C}')`)).error?.includes("permission denied"), "nor can blocked()");
+  ok((await asUser(B, `select public.hit('post', 1000000, '1 minute')`)).error?.includes("permission denied"), "nor the rate limiter");
+  ok((await asUser(B, "select * from rate_limits")).error?.includes("permission denied"), "rate limit counters are private");
+  console.log("Storage uploads");
+  const put = (uid, name) => asUser(uid, `insert into storage.objects (bucket_id, name) values ('media', '${name}')`);
+  ok(!(await put(B, `${B}/abc-123.jpg`)).error, "upload into your own folder");
+  ok((await put(B, `${A}/abc-123.jpg`)).error?.includes("row-level security"), "not into someone else's folder");
+  ok((await put(B, `${B}/evil.svg`)).error?.includes("row-level security"), "no SVG or other script-capable files");
+  ok((await put(B, `${B}/deep/a.jpg`)).error?.includes("row-level security"), "no sub-folders");
+  await pg.query(`insert into storage.objects (bucket_id, name) select 'media', '${B}/f' || g || '.jpg' from generate_series(1, 199) g`);
+  ok((await put(B, `${B}/one-more.jpg`)).error?.includes("row-level security"), "200 uploads a day per person");
   await pg.cleanup();
 }
 

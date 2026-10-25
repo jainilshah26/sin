@@ -36,7 +36,7 @@ export async function video(file) {
   await new Promise(res => { v.onseeked = res; v.currentTime = Math.min(1, (v.duration || 0) / 2); setTimeout(res, 1500); });
   const poster = await toBlob(draw(v, v.videoWidth, v.videoHeight, 720), 0.8);
   URL.revokeObjectURL(u);
-  const ext = (file.name.split(".").pop() || "mp4").toLowerCase().slice(0, 5);
+  const ext = { "video/webm": "webm", "video/quicktime": "mov" }[file.type] || "mp4";   // names the server accepts
   const [url, thumb] = await Promise.all([api.upload(file, ext), poster ? api.upload(poster, "jpg") : null]);
   return { type: "video", url, thumb, w: v.videoWidth, h: v.videoHeight, duration };
 }

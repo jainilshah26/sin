@@ -1,17 +1,22 @@
 /* End-to-end run of the real app in offline mode: two people in two tabs of one browser go through every mode.
-   Run with: npm run e2e   (needs Playwright's Chromium; screenshots land in tests/shots/) */
+   Run with: npm run e2e   (needs Playwright's Chromium; screenshots land in tests/shots/)
+   E2E_DIST=1 runs the production build in dist/ with the security headers from vercel.json, so anything the
+   Content-Security-Policy would block fails the run. */
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
 
-const root = path.resolve(import.meta.dirname, ".."), shots = path.join(root, "tests/shots");
+const repo = path.resolve(import.meta.dirname, ".."), shots = path.join(repo, "tests/shots");
+const root = process.env.E2E_DIST ? path.join(repo, "dist") : repo;
+const SEC = process.env.E2E_DIST ? Object.fromEntries(JSON.parse(fs.readFileSync(path.join(repo, "vercel.json"), "utf8")).headers
+  .find(h => h.source === "/(.*)").headers.map(h => [h.key, h.key === "Content-Security-Policy" ? h.value.replace("; upgrade-insecure-requests", "") : h.value])) : {};
 fs.mkdirSync(shots, { recursive: true });
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".webmanifest": "application/manifest+json" };
 const server = http.createServer((req, res) => {
   const f = path.join(root, decodeURIComponent(new URL(req.url, "http://x").pathname.replace(/\/$/, "/index.html")));
   if (!f.startsWith(root) || !fs.existsSync(f)) { res.writeHead(404); return res.end(); }
-  res.writeHead(200, { "content-type": TYPES[path.extname(f)] || "application/octet-stream" }); fs.createReadStream(f).pipe(res);
+  res.writeHead(200, { ...SEC, "content-type": TYPES[path.extname(f)] || "application/octet-stream" }); fs.createReadStream(f).pipe(res);
 }).listen(0);
 const URL_ = `http://localhost:${server.address().port}/?offline`;
 
@@ -21,7 +26,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || 
 const ctx = await browser.newContext({ viewport: { width: 400, height: 860 }, deviceScaleFactor: 2 });
 const errors = [];
 const page = async name => { const p = await ctx.newPage(); p.on("pageerror", e => errors.push(name + ": " + e.message)); p.on("console", m => m.type() === "error" && errors.push(name + ": " + m.text())); await p.goto(URL_); return p; };
-const fixture = f => path.join(root, "tests/fixtures", f);
+const fixture = f => path.join(repo, "tests/fixtures", f);
 const shot = (p, n) => p.screenshot({ path: path.join(shots, n + ".png") });
 const pick = async (p, click, files) => { const [fc] = await Promise.all([p.waitForEvent("filechooser"), click()]); await fc.setFiles(files.map(fixture)); };
 
@@ -195,9 +200,23 @@ try {
   await B.goto(URL_ + "#/reset/0123456789abcdef"); await B.reload(); await B.waitForSelector("#auth");
   ok(await B.isVisible("text=That reset link has expired or was already used."), "a used or made-up reset link is refused");
   await B.fill("[name=email]", "bob@example.com"); await B.fill("[name=password]", "third-pass1"); await B.click("#auth button.btn"); await B.waitForSelector(".tabs");
+  console.log("Bot check (Cloudflare Turnstile, faked here)");
+  {
+    const P = await ctx.newPage(); P.on("pageerror", e => errors.push("captcha: " + e.message));
+    await P.route("https://challenges.cloudflare.com/**", r => r.fulfill({ contentType: "text/javascript", body: `window.turnstile = { render(el, o) {
+      el.innerHTML = '<button type="button" id="human">I am human</button>'; el.querySelector("button").onclick = () => o.callback("token-123"); return 1; }, reset() {} };` }));
+    await P.goto(URL_ + "&captcha=test-key"); await P.waitForSelector("#human");
+    ok(await P.isVisible("#auth #human"), "the bot check shows on log-in when a site key is set");
+    await P.click("text=New here? Create an account"); await P.waitForSelector("#human");
+    await P.fill("[name=email]", "cara@example.com"); await P.fill("[name=password]", "password123");
+    await P.click("#human"); await P.click("#auth button.btn"); await P.waitForSelector("#ob");
+    ok(true, "passing the check lets you sign up");
+    await P.close();
+  }
   console.log("Desktop layout");
   const D = await ctx.newPage(); await D.setViewportSize({ width: 1280, height: 800 }); await D.goto(URL_);
-  await signUp(D, "cara@example.com", "Cara Diaz", "cara");
+  await D.goto(URL_); await D.fill("[name=email]", "cara@example.com"); await D.fill("[name=password]", "password123"); await D.click("#auth button.btn"); await D.waitForSelector("#ob");
+  await D.fill("[name=name]", "Cara Diaz"); await D.fill("[name=handle]", "cara"); await D.click("button:has-text('Continue')"); await D.waitForSelector(".tabs");
   await D.goto(URL_ + "#/feed?s=all"); await D.waitForSelector(".post"); await shot(D, "12-desktop-feed");
   await D.goto(URL_ + "#/video"); await D.waitForSelector(".vtile"); await D.click(".vtile .vtitle"); await D.waitForSelector(".watch"); await shot(D, "13-desktop-watch");
   await D.click(".rail-out"); await D.waitForSelector("#auth"); ok(true, "log out from the side menu on a laptop");

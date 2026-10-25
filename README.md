@@ -22,9 +22,10 @@ How the five modes stay one app: one tab bar and header, one profile page with P
 ## Run and test
 
 ```
-npx http-server -c-1 .          # or any static server, then open http://localhost:8080/?offline
+npx http-server -c-1 .          # or any static server, then open http://localhost:8080/?offline (the online version needs `npm run build`, then serve dist/)
 npm test                         # contract tests: 195 steps, run on local.js and on Postgres, every answer must match
 npm run e2e                      # two people in two tabs go through every mode in Chromium; screenshots in tests/shots/
+npm run e2e:dist                 # the same against the production build, with the real security headers
 ```
 
 `npm test` compares against Postgres when one is reachable (`DATABASE_URL`, default `postgres://sin:sin@localhost/sin_test`). Without one it tests only the offline backend.
@@ -37,5 +38,24 @@ npm run e2e                      # two people in two tabs go through every mode 
 4. Import the repo in Vercel (it uses `vercel.json`: `npm run build`, output `dist/`).
 
 The first account created becomes the moderator (Settings → Moderation queue). Make others moderators with `update profiles set role = 'mod' where handle = '…'`.
+
+## Security
+
+What the code does (details in [ARCHITECTURE.md](ARCHITECTURE.md#security-model)):
+
+- **Database:** every action is a function that checks who is asking; tables can't be read or written directly; internal helpers can't be called.
+- **Flood and spam limits:** per person, e.g. 10 posts a minute, 30 messages a minute, 60 follows an hour, 20 reports an hour, 3 company pages a day. Duplicate posts within 10 minutes and posts with more than 5 links are refused.
+- **Media:** only files the person uploaded to this project's storage can be attached (no outside links, tracking pixels or other people's files). Uploads: photos/videos only (no SVG/HTML), own folder only, 200 files a day.
+- **Browser:** strict Content-Security-Policy (scripts only from this site), no framing (clickjacking), HSTS, no-sniff, camera/mic/location off. The Supabase library is bundled, not loaded from a CDN. `npm audit` is clean.
+- **Bots:** optional Cloudflare Turnstile check on sign-up, log-in and password reset; `robots.txt` turns away AI crawlers (everything is behind log-in anyway).
+
+`npm run e2e:dist` runs the end-to-end test against the production build with the real security headers.
+
+### Settings only the owner can change (dashboards)
+
+1. **Supabase → Authentication → Sign In / Providers → Email:** turn **Confirm email** on before inviting the public, and set the minimum password length to 8+ with letters and numbers.
+2. **Bot protection (free):** Cloudflare dashboard → Turnstile → Add widget for `sinners.in` → copy the *site key* into `captchaSiteKey` in `js/config.js` (and deploy), then Supabase → Authentication → Attack Protection → enable CAPTCHA → Turnstile → paste the *secret key*. Do it in that order, or log-ins fail until the app is updated.
+3. **Email sender:** Supabase → Authentication → Emails → SMTP Settings (e.g. Resend), so reset emails reach everyone and can't be used to burn your email quota.
+4. **Your own accounts:** turn on two-factor login for GitHub, Vercel, Supabase, Hostinger and Cloudflare. Taking over one of those is the easiest way into the app.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for how each hard part is handled now and what changes at scale.

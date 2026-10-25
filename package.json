@@ -5,11 +5,15 @@
   "description": "Sin: feed, photos, chat, video and work in one app. Static site; `npm run build` bundles it into dist/.",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node tests/contract.mjs"
+    "test": "node tests/contract.mjs",
+    "e2e:dist": "npm run build && E2E_DIST=1 node tests/e2e.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
     "pg": "^8.13.0",
     "playwright": "^1.63.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.117.3"
   }
 }

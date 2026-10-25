@@ -364,3 +364,4 @@ label.check input { width: auto; }
 .side .card { margin: 0 0 16px; }
 .side .person { padding: 8px 0; }
 .side-foot { font-size: 12px; color: var(--muted); padding: 0 4px; }
+.captcha { min-height: 65px; }
