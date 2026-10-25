@@ -34,6 +34,9 @@ const P = {
   user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0",
   building: "M5 21V4h10v17M15 9h4v12M8 8h3M8 12h3M8 16h3",
   out: "M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10",
+  sun: "M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4",
+  moon: "M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z",
+  auto: "M3 5h18v11H3zM8 20h8M12 16v4",
 };
 export const icon = (n, cls = "") => raw(`<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${P[n]}"/></svg>`);
 

@@ -4,6 +4,7 @@ import { api, cloud, onLive, authLink } from "./api.js";
 import { CONFIG } from "./config.js";
 import { html, raw, $, icon, avatar, who, postCard, empty, loading, hydrate, toast, sheet, ask, confirmSheet, ago, rich, count, plural } from "./ui.js";
 import * as compose from "./compose.js";
+import { themePicker, setTheme } from "./theme.js";
 import * as feed from "./modes/feed.js";
 import * as photos from "./modes/photos.js";
 import * as chat from "./modes/chat.js";
@@ -121,10 +122,12 @@ const global = {
       <a href="#/u/${me.handle}?tab=work" data-close>${icon("work")} Professional profile</a>
       <a href="#/settings" data-close>${icon("user")} Settings and password</a>
       ${me.role === "mod" ? html`<a href="#/mod" data-close>${icon("shield")} Moderation queue</a>` : ""}
+      <div class="theme-row"><span class="muted small">Appearance</span>${themePicker()}</div>
       <button class="danger" data-x="out">${icon("out")} Log out</button>
       <button data-close>Cancel</button></div>`);
     s.el.querySelector("[data-x=out]").onclick = async () => { s.close(); try { await global.signout(); } catch (e) { toast(e.message, true); } };
   },
+  theme(b) { setTheme(b.dataset.t); },
   async "side-follow"(b) { await api.follow({ user: b.dataset.id }); b.textContent = "Following"; b.classList.add("ghost"); b.disabled = true; },
   async like(b) { const r = await api.toggle_like({ id: +b.dataset.id }); setCount(b, r.like_count, r.liked, "on-like"); },
   async repost(b) { const r = await api.repost({ id: +b.dataset.id }); setCount(b, r.repost_count, r.reposted, "on-repost"); toast(r.reposted ? "Reposted" : "Repost removed"); },
@@ -278,6 +281,7 @@ async function settings(el, { q }) {
       <label>Description<textarea name="description" rows="2" maxlength="1000"></textarea></label><button class="btn">Add</button></form>
     <div class="card stack">${me.role === "mod" ? html`<a class="btn ghost" href="#/mod">${icon("shield")} Moderation queue</a>` : ""}
       <button class="btn ghost" data-act="signout">${icon("out")} Log out</button></div>
+    <div class="card stack"><h3>Appearance</h3><p class="muted small">Light, dark, or match your device. Saved on this device.</p>${themePicker()}</div>
     <form class="card stack" data-form="password"><h3>Change password</h3>
       <label>New password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
       <label>Type it again<input name="again" type="password" autocomplete="new-password" minlength="8" required></label>
@@ -318,7 +322,7 @@ function authScreen(mode = "in") {
       <button class="btn">${mode === "in" ? "Log in" : "Sign up"}</button>
       ${mode === "in" ? html`<button type="button" class="link small" id="forgot">Forgot password?</button>` : ""}
       <p class="err" role="alert">${authLink.error || ""}</p></form>
-    <button class="link" id="swap">${mode === "in" ? "New here? Create an account" : "Have an account? Log in"}</button></div>`.s;
+    <button class="link" id="swap">${mode === "in" ? "New here? Create an account" : "Have an account? Log in"}</button>${themePicker()}</div>`.s;
   authLink.error = null;
   $("#swap").onclick = () => authScreen(mode === "in" ? "up" : "in");
   if ($("#forgot")) $("#forgot").onclick = () => forgotScreen($("#auth").email.value);

@@ -3,11 +3,14 @@
   --bg: #ffffff; --bg2: #f4f5f7; --line: #e4e6eb; --text: #0f1115; --muted: #667085; --danger: #d92d20; --ok: #079455;
   --accent: #2563eb; --radius: 14px; --top: 56px; --tabs: 62px; --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px);
   --head: calc(var(--top) + var(--safe-t)); /* header height including an iPhone notch */
+  --warn: #b54708; --warn-bg: #fffaeb; --warn-line: #fedf89;
   color-scheme: light;
 }
+/* dark colours: when the device is dark (unless Light was picked), or when Dark was picked */
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #0f1115; --bg2: #191c22; --line: #2a2e37; --text: #eef0f3; --muted: #98a2b3; color-scheme: dark; }
+  :root:not([data-theme="light"]) { --bg: #0f1115; --bg2: #191c22; --line: #2a2e37; --text: #eef0f3; --muted: #98a2b3; --warn: #fdb022; --warn-bg: #2a2110; --warn-line: #54400f; color-scheme: dark; }
 }
+:root[data-theme="dark"] { --bg: #0f1115; --bg2: #191c22; --line: #2a2e37; --text: #eef0f3; --muted: #98a2b3; --warn: #fdb022; --warn-bg: #2a2110; --warn-line: #54400f; color-scheme: dark; }
 body[data-mode="feed"] { --accent: #2563eb; }
 body[data-mode="photos"] { --accent: #db2777; }
 body[data-mode="chat"] { --accent: #059669; }
@@ -65,7 +68,7 @@ label.check input { width: auto; }
 .btn:disabled { opacity: .55; cursor: default; }
 .link { color: var(--accent); font-weight: 600; padding: 8px; }
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; background: var(--bg2); border: 1px solid var(--line); font-size: 12px; font-weight: 600; }
-.chip.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); } .chip.warn { color: #b54708; border-color: #fedf89; background: #fffaeb; }
+.chip.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); } .chip.warn { color: var(--warn); border-color: var(--warn-line); background: var(--warn-bg); }
 .seg { display: flex; border-bottom: 1px solid var(--line); overflow-x: auto; }
 .seg a { flex: 1; text-align: center; padding: 13px 10px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; white-space: nowrap; }
 .seg a.on { color: var(--text); border-color: var(--accent); }
@@ -210,6 +213,12 @@ label.check input { width: auto; }
 @keyframes fade { from { opacity: 0; } } @keyframes up { from { transform: translateY(30px); opacity: .5; } }
 .menu { display: grid; } .menu > * { padding: 14px 8px; text-align: left; border-bottom: 1px solid var(--line); font-weight: 600; } .menu > :last-child { border: 0; color: var(--muted); }
 .menu .danger { color: var(--danger); }
+.theme-pick { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--bg2); border: 1px solid var(--line); }
+.theme-pick button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.theme-pick button .ic { width: 18px; height: 18px; }
+.theme-pick button[aria-pressed="true"] { background: var(--bg); color: var(--text); box-shadow: 0 1px 3px rgb(0 0 0 / .15); }
+.menu.account > .theme-row { display: grid; gap: 8px; padding: 12px 8px; border-bottom: 1px solid var(--line); }
+.auth .theme-pick { justify-self: center; width: min(100%, 320px); }
 .menu.account > a, .menu.account > button { display: flex; align-items: center; gap: 12px; }
 .menu.account > .person { padding: 8px 8px 14px; }
 .me-btn { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; }

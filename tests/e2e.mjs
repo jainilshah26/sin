@@ -159,6 +159,17 @@ try {
   ok(await A.isVisible("text=Profile not found."), "blocked person can't see the blocker's profile");
   await B.click("[data-act=unblock]");
 
+  console.log("Light and dark mode");
+  const bg = p => p.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  await A.goto(URL_ + "#/feed"); await A.waitForSelector(".tabs"); const light = await bg(A);
+  await A.click("#me-av"); await A.click(".menu.account [data-t=dark]");
+  ok(await A.evaluate(() => document.documentElement.dataset.theme) === "dark" && await bg(A) !== light, "Dark switches the colours at once");
+  await A.keyboard.press("Escape"); await A.reload(); await A.waitForSelector(".tabs");
+  ok(await A.evaluate(() => document.documentElement.dataset.theme) === "dark", "the choice is remembered after a reload");
+  await A.goto(URL_ + "#/settings"); await A.waitForSelector(".theme-pick");
+  ok(await A.getAttribute(".card .theme-pick [data-t=dark]", "aria-pressed") === "true", "Settings shows the current choice");
+  await A.click(".card .theme-pick [data-t=light]"); ok(await bg(A) === light, "Light");
+  await A.click(".card .theme-pick [data-t=system]"); ok(await A.evaluate(() => !document.documentElement.dataset.theme), "System follows the device again");
   console.log("Forgot and change password");
   await B.goto(URL_ + "#/feed"); await B.click("#me-av"); await B.waitForSelector(".menu.account");
   ok(await B.isVisible(".menu.account >> text=Settings and password"), "your photo opens the account menu");
