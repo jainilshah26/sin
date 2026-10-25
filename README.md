@@ -9,7 +9,7 @@ Five apps in one, on one account: **Feed** (Twitter-style), **Photos** (Instagra
 | Chat | 1:1 and group chats, live delivery, read receipts ("Seen", "Seen by …"), unread badges, photo and video sharing |
 | Video | Uploads with title and description, channels (a channel is your profile), subscribe, comments, view counts, watch history with resume, playlists |
 | Work | Professional profile (headline, about, experience, skills, open to work), connections (request/accept), company pages, job posts, apply, applicant review with status updates |
-| Shared | Email sign-up, one profile, notifications from every mode, one search across everything, report/block, moderation queue |
+| Shared | Email sign-up with forgot/change password, one profile, notifications from every mode, one search across everything, report/block, moderation queue |
 
 How the five modes stay one app: one tab bar and header, one profile page with Posts / Photos / Videos / Professional tabs, one content model (a reply, a photo comment and a video comment are all posts), one follow graph (following someone on Feed is subscribing to them on Video), one inbox of notifications and one search. Each mode only changes the accent colour.
 

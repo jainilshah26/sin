@@ -159,6 +159,28 @@ try {
   ok(await A.isVisible("text=Profile not found."), "blocked person can't see the blocker's profile");
   await B.click("[data-act=unblock]");
 
+  console.log("Forgot and change password");
+  await B.goto(URL_ + "#/settings"); await B.click("[data-act=signout]"); await B.waitForSelector("#auth");
+  await B.fill("[name=email]", "bob@example.com"); await B.click("#forgot"); await B.waitForSelector("#fp");
+  ok(await B.inputValue("#fp [name=email]") === "bob@example.com", "forgot screen keeps the typed email");
+  await B.click("#fp button"); await B.waitForSelector("text=Check your email");
+  await B.click("#offline-link"); await B.waitForSelector("#np");
+  await B.fill("#np [name=password]", "newpass123"); await B.fill("#np [name=again]", "different1"); await B.click("#np button");
+  ok(await B.isVisible("text=The two passwords don't match."), "mismatched passwords are caught");
+  await B.fill("#np [name=again]", "newpass123"); await B.click("#np button"); await B.waitForSelector(".tabs");
+  ok(true, "reset link signs you in after choosing a new password");
+  await B.goto(URL_ + "#/settings"); await B.click("[data-act=signout]"); await B.waitForSelector("#auth");
+  await B.fill("[name=email]", "bob@example.com"); await B.fill("[name=password]", "password123"); await B.click("#auth button.btn");
+  await B.waitForSelector("text=Wrong email or password."); ok(true, "old password no longer works");
+  await B.fill("[name=password]", "newpass123"); await B.click("#auth button.btn"); await B.waitForSelector(".tabs"); ok(true, "new password works");
+  await B.goto(URL_ + "#/settings"); await B.fill("[data-form=password] [name=password]", "third-pass1"); await B.fill("[data-form=password] [name=again]", "third-pass1");
+  await B.click("[data-form=password] button"); await B.waitForSelector("text=Password changed");
+  await B.click("[data-act=signout]"); await B.waitForSelector("#auth"); await B.fill("[name=email]", "bob@example.com"); await B.fill("[name=password]", "third-pass1");
+  await B.click("#auth button.btn"); await B.waitForSelector(".tabs"); ok(true, "change password from Settings");
+  await B.goto(URL_ + "#/settings"); await B.click("[data-act=signout]"); await B.waitForSelector("#auth");
+  await B.goto(URL_ + "#/reset/0123456789abcdef"); await B.reload(); await B.waitForSelector("#auth");
+  ok(await B.isVisible("text=That reset link has expired or was already used."), "a used or made-up reset link is refused");
+  await B.fill("[name=email]", "bob@example.com"); await B.fill("[name=password]", "third-pass1"); await B.click("#auth button.btn"); await B.waitForSelector(".tabs");
   console.log("Desktop layout");
   const D = await ctx.newPage(); await D.setViewportSize({ width: 1280, height: 800 }); await D.goto(URL_);
   await signUp(D, "cara@example.com", "Cara Diaz", "cara");

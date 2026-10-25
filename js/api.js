@@ -63,6 +63,16 @@ export async function mediaUrl(u) {
   return objectUrls.get(u);
 }
 
+/* ---------- password reset ----------
+   Cloud: Supabase emails a link back to this site; opening it signs the person in so they can choose a new password.
+   Offline there is no email, so the "email" is a link shown on screen (#/reset/<token>). */
+export const authLink = (() => {
+  const h = location.hash, err = /error_description=([^&]+)/.exec(h);
+  return { recovery: /type=recovery/.test(h), error: err ? decodeURIComponent(err[1].replace(/\+/g, " ")) : null };
+})();
+const saveState = s => localStorage.setItem(DBK, JSON.stringify(s));
+const clearHash = () => history.replaceState(null, "", location.pathname + location.search);
+
 /* ---------- public API ---------- */
 let session = null; // { uid }
 export const api = new Proxy({
@@ -71,8 +81,19 @@ export const api = new Proxy({
     if (cloud) {
       const c = await sb(); const { data } = await c.auth.getSession();
       session = data.session ? { uid: data.session.user.id } : null;
-      c.auth.onAuthStateChange((_e, s) => { session = s ? { uid: s.user.id } : null; });
-    } else session = localUid ? { uid: localUid } : null;
+      c.auth.onAuthStateChange((e, s) => { session = s ? { uid: s.user.id } : null; if (e === "PASSWORD_RECOVERY") authLink.recovery = true; });
+      if (authLink.error) clearHash();
+      if (authLink.recovery && !session) { authLink.recovery = false; authLink.error ||= "That reset link has expired or was already used. Ask for a new one."; }
+    } else {
+      const m = location.hash.match(/^#\/reset\/(\w+)$/);
+      if (m) {
+        const s = load(), r = (s.resets || {})[m[1]];
+        if (r && r.exp > Date.now()) { delete s.resets[m[1]]; saveState(s); setLocalUid(r.id); authLink.recovery = true; }
+        else authLink.error = "That reset link has expired or was already used. Ask for a new one.";
+        clearHash();
+      }
+      session = localUid ? { uid: localUid } : null;
+    }
     if (session && cloud) cloudLive(session.uid);
     return session;
   },
@@ -100,6 +121,34 @@ export const api = new Proxy({
     const u = load().users.find(u => u.email === email);
     if (!u || u.hash !== await sha(email + ":" + password)) throw new Error("Wrong email or password.");
     setLocalUid(u.id); session = { uid: u.id }; return session;
+  },
+  /* Sends a reset link. Says nothing about whether the email has an account, so it can't be used to find out who is a member. */
+  async requestReset(email) {
+    email = String(email).trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Enter a valid email.");
+    if (cloud) {
+      const { error } = await (await sb()).auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+      if (error) throw new Error(/rate limit|security purposes/i.test(error.message) ? "Too many reset emails. Wait a few minutes and try again." : error.message);
+      return {};
+    }
+    const s = load(), u = s.users.find(u => u.email === email);
+    if (!u) return {};
+    const token = [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, "0")).join("");
+    s.resets = { ...(s.resets || {}), [token]: { id: u.id, exp: Date.now() + 3600e3 } }; saveState(s);
+    return { link: location.pathname + location.search + "#/reset/" + token };
+  },
+  /* New password for whoever is signed in: after a reset link, or from Settings. */
+  async setPassword(password) {
+    if (String(password).length < 8) throw new Error("Use at least 8 characters for your password.");
+    if (cloud) {
+      const { error } = await (await sb()).auth.updateUser({ password });
+      if (error) throw new Error(/different from the old/i.test(error.message) ? "Pick a password you haven't used before." : error.message);
+    } else {
+      const s = load(), u = s.users.find(u => u.id === localUid);
+      if (!u) throw new Error("Sign in first.");
+      u.hash = await sha(u.email + ":" + password); saveState(s);
+    }
+    authLink.recovery = false;
   },
   async signOut() {
     if (cloud) { const c = await sb(); if (channel) c.removeChannel(channel); channel = null; await c.auth.signOut(); }

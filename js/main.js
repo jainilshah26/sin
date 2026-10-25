@@ -1,6 +1,6 @@
 /* App shell: sign-in, the five-mode tab bar, the router, and the screens every mode shares
    (profiles, post threads, notifications, search, settings, moderation). */
-import { api, cloud, onLive } from "./api.js";
+import { api, cloud, onLive, authLink } from "./api.js";
 import { CONFIG } from "./config.js";
 import { html, raw, $, icon, avatar, who, postCard, empty, loading, hydrate, toast, sheet, ask, confirmSheet, ago, rich, count, plural } from "./ui.js";
 import * as compose from "./compose.js";
@@ -263,7 +263,11 @@ async function settings(el, { q }) {
       <div class="row"><label class="grow">Start<input type="date" name="start_date" required></label><label class="grow">End (empty if current)<input type="date" name="end_date"></label></div>
       <label>Description<textarea name="description" rows="2" maxlength="1000"></textarea></label><button class="btn">Add</button></form>
     <div class="card stack">${me.role === "mod" ? html`<a class="btn ghost" href="#/mod">${icon("shield")} Moderation queue</a>` : ""}
-      <button class="btn ghost" data-act="signout">${icon("out")} Sign out</button></div>`);
+      <button class="btn ghost" data-act="signout">${icon("out")} Sign out</button></div>
+    <form class="card stack" data-form="password"><h3>Change password</h3>
+      <label>New password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label>Type it again<input name="again" type="password" autocomplete="new-password" minlength="8" required></label>
+      <button class="btn">Change password</button></form>`);
   if (q.get("pro")) $("#pro").scrollIntoView();
   const saveMe = async (patch) => { ctx.me = await api.update_profile({ name: me.name, bio: me.bio, avatar_url: me.avatar_url, ...patch }); shell(); route(); };
   on({
@@ -273,6 +277,7 @@ async function settings(el, { q }) {
     avatar: async () => { const [file] = await (await import("./media.js")).pick("image/*"); if (!file) return; toast("Uploading…");
       const m = await (await import("./media.js")).photo(file); await saveMe({ avatar_url: m.thumb }); toast("Photo updated"); },
     "no-avatar": () => saveMe({ avatar_url: null }),
+    password: async (f, v) => { if (v.password !== v.again) throw new Error("The two passwords don't match."); await api.setPassword(v.password); f.reset(); toast("Password changed"); },
     signout: async () => { await api.signOut(); ctx.me = null; location.hash = ""; start(); },
   });
 }
@@ -298,15 +303,57 @@ function authScreen(mode = "in") {
       <label>Email<input name="email" type="email" autocomplete="email" required></label>
       <label>Password<input name="password" type="password" autocomplete="${mode === "in" ? "current-password" : "new-password"}" minlength="8" required></label>
       <button class="btn">${mode === "in" ? "Log in" : "Sign up"}</button>
-      <p class="err" role="alert"></p></form>
+      ${mode === "in" ? html`<button type="button" class="link small" id="forgot">Forgot password?</button>` : ""}
+      <p class="err" role="alert">${authLink.error || ""}</p></form>
     <button class="link" id="swap">${mode === "in" ? "New here? Create an account" : "Have an account? Log in"}</button></div>`.s;
+  authLink.error = null;
   $("#swap").onclick = () => authScreen(mode === "in" ? "up" : "in");
+  if ($("#forgot")) $("#forgot").onclick = () => forgotScreen($("#auth").email.value);
   $("#auth").onsubmit = async e => {
     e.preventDefault(); const f = e.target, b = f.querySelector("button"); b.disabled = true;
     try { await api[mode === "in" ? "signIn" : "signUp"](f.email.value, f.password.value); await start(); }
     catch (err) { f.querySelector(".err").textContent = err.message; } finally { b.disabled = false; }
   };
 }
+/* step 1 of a reset: ask for the email and send the link */
+function forgotScreen(email = "") {
+  app.className = "";
+  app.innerHTML = html`<div class="auth"><h1 class="logo big">${CONFIG.name}</h1>
+    <form class="card stack" id="fp"><h3>Reset your password</h3>
+      <p class="muted small">Enter the email you signed up with. We'll send you a link to choose a new password.</p>
+      <label>Email<input name="email" type="email" autocomplete="email" value="${email}" required autofocus></label>
+      <button class="btn">Send reset link</button><p class="err" role="alert"></p></form>
+    <button class="link" id="back-login">Back to log in</button></div>`.s;
+  $("#back-login").onclick = () => authScreen();
+  $("#fp").onsubmit = async e => {
+    e.preventDefault(); const f = e.target, b = f.querySelector("button"); b.disabled = true;
+    try {
+      const r = await api.requestReset(f.email.value);
+      f.innerHTML = html`<h3>Check your email</h3>
+        <p>If <b>${f.email.value.trim()}</b> has an account, a link to reset your password is on its way. It can take a few minutes; check your spam folder too.</p>
+        ${r.link ? html`<p class="chip warn">Offline test mode has no email. This is the link it would contain:</p><a class="btn" id="offline-link" href="${r.link}">Open reset link</a>` : ""}`.s;
+      if (r.link) $("#offline-link").onclick = ev => { ev.preventDefault(); location.hash = r.link.split("#")[1]; start(); };
+    } catch (err) { f.querySelector(".err").textContent = err.message; b.disabled = false; }
+  };
+}
+
+/* step 2: the person opened the link and is signed in for this one purpose */
+function newPasswordScreen() {
+  app.className = "";
+  app.innerHTML = html`<div class="auth"><h1 class="logo big">${CONFIG.name}</h1>
+    <form class="card stack" id="np"><h3>Choose a new password</h3>
+      <label>New password<input name="password" type="password" autocomplete="new-password" minlength="8" required autofocus></label>
+      <label>Type it again<input name="again" type="password" autocomplete="new-password" minlength="8" required></label>
+      <button class="btn">Save password</button><p class="err" role="alert"></p></form></div>`.s;
+  $("#np").onsubmit = async e => {
+    e.preventDefault(); const f = e.target, b = f.querySelector("button");
+    if (f.password.value !== f.again.value) { f.querySelector(".err").textContent = "The two passwords don't match."; return; }
+    b.disabled = true;
+    try { await api.setPassword(f.password.value); toast("Password changed. You're signed in."); start(); }
+    catch (err) { f.querySelector(".err").textContent = err.message; b.disabled = false; }
+  };
+}
+
 function onboard() {
   app.className = "";
   app.innerHTML = html`<div class="auth"><h1 class="logo big">${CONFIG.name}</h1><form class="card stack" id="ob"><h3>Pick your handle</h3>
@@ -326,6 +373,7 @@ async function start() {
   try {
     const s = await api.init();
     if (!s) return authScreen();
+    if (authLink.recovery) return newPasswordScreen();
     ctx.me = ctx.me || await api.me();
     if (!ctx.me) return onboard();
   } catch (e) { app.className = ""; app.innerHTML = empty(e.message, html`<button class="btn" onclick="location.reload()">Try again</button>`).s; return; }
