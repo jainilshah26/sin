@@ -269,6 +269,8 @@ if (pg) {
   ok((await asUser(B, "insert into messages (conversation_id, sender_id, body) values (1, '" + B + "', 'x')")).error?.includes("permission denied"), "no direct writes");
   await pg.query("begin"); await pg.query("set local role anon");
   ok(await pg.query("select public.badges()").then(() => false, () => true), "anon can't call functions"); await pg.query("rollback");
+  ok((await asUser(B, `select public.notify('${A}', '${C}', 'like', null)`)).error?.includes("permission denied"), "helpers like notify can't be called directly");
+  ok((await asUser(B, `select public.blocked('${A}', '${C}')`)).error?.includes("permission denied"), "nor can blocked()");
   await pg.cleanup();
 }
 

@@ -26,7 +26,7 @@ language sql security definer set search_path = public as $$
   select p_user, p_actor, p_type, p_post, p_data where p_user <> p_actor and not blocked(p_user, p_actor)
 $$;
 
-create or replace function like_pattern(q text) returns text language sql immutable as
+create or replace function like_pattern(q text) returns text language sql immutable set search_path = public as
   $$ select '%' || replace(replace(replace(q, '\', '\\'), '%', '\%'), '_', '\_') || '%' $$;
 
 create or replace function post_json(p posts, v uuid, nested boolean default true) returns jsonb language sql stable security definer set search_path = public as $$
@@ -422,7 +422,7 @@ begin
   return jsonb_build_object('id', c);
 end $$;
 
-create or replace function msg_json(m messages) returns jsonb language sql immutable as $$
+create or replace function msg_json(m messages) returns jsonb language sql immutable set search_path = public as $$
   select jsonb_build_object('id', m.id, 'conversation_id', m.conversation_id, 'sender_id', m.sender_id, 'body', m.body, 'media', m.media, 'created_at', m.created_at)
 $$;
 
@@ -463,7 +463,7 @@ begin
 end $$;
 
 -- ---------- work: companies, jobs, applications ----------
-create or replace function company_json(c companies) returns jsonb language sql immutable as $$
+create or replace function company_json(c companies) returns jsonb language sql immutable set search_path = public as $$
   select jsonb_build_object('id', c.id, 'slug', c.slug, 'name', c.name, 'about', c.about, 'website', c.website, 'logo_url', c.logo_url)
 $$;
 
@@ -661,11 +661,15 @@ begin
   return jsonb_build_object('ok', true);
 end $$;
 
--- Only signed-in users may call anything.
+-- Only signed-in users may call anything, and only the app's actions: the helpers above run inside them
+-- (as the function owner) and are not callable on their own, so nobody can e.g. send a notification as someone else.
 do $$ declare f record; begin
-  for f in select p.oid::regprocedure sig from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' loop
-    execute format('revoke all on function %s from public, anon', f.sig);
-    execute format('grant execute on function %s to authenticated', f.sig);
+  for f in select p.oid::regprocedure sig, p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' loop
+    execute format('revoke all on function %s from public, anon, authenticated', f.sig);
+    if f.proname not in ('me_id', 'card', 'blocked', 'notify', 'like_pattern', 'post_json', 'visible_post', 'pro_json', 'connection_state',
+        'msg_json', 'company_json', 'can_manage_job', 'job_json', 'require_mod') then
+      execute format('grant execute on function %s to authenticated', f.sig);   -- is_member stays: the chat read policies call it
+    end if;
   end loop;
 end $$;
 
