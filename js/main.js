@@ -44,7 +44,7 @@ export async function route() {
     await f(view, params, () => token === route.n);
     hydrate(view);
   } catch (e) { if (token === route.n) view.innerHTML = empty(e.message, html`<a class="btn" href="#/feed">Go to Feed</a>`).s; }
-  badges();
+  badges(); side();
 }
 /* re-render helper for views: draw(view, html``) then hydrate media */
 export const draw = (el, h) => { el.innerHTML = h.s; hydrate(el); };
@@ -69,9 +69,29 @@ function shell() {
       <a href="#/u/${ctx.me.handle}" aria-label="Your profile" id="me-av">${avatar(ctx.me, 32)}</a>
     </header>
     <main id="view"></main>
-    <nav class="tabs">${MODES.map(([m, label]) => html`<a href="#/${m}" data-mode="${m}">${icon(m)}<span>${label}</span>${m === "chat" ? html`<i class="badge" id="mb" hidden></i>` : ""}</a>`)}</nav>`.s;
+    <nav class="tabs">${MODES.map(([m, label]) => html`<a href="#/${m}" data-mode="${m}">${icon(m)}<span>${label}</span>${m === "chat" ? html`<i class="badge" id="mb" hidden></i>` : ""}</a>`)}</nav>
+    <aside class="side" id="side"></aside>`.s;
   hydrate(app);
+  sideAt = 0;
 }
+
+/* Right-hand column on wide screens (CSS shows it from 1280px): search and who to follow, refreshed at most once a minute. */
+let sideAt = 0;
+const wide = matchMedia("(min-width: 1280px)");
+async function side(force) {
+  const el = $("#side");
+  if (!el || !wide.matches || (!force && Date.now() - sideAt < 60000)) return;
+  sideAt = Date.now();
+  const who = await api.suggestions().catch(() => []);
+  el.innerHTML = html`<form class="card" id="side-search" role="search"><input name="q" type="search" placeholder="Search Sin" aria-label="Search"></form>
+    ${who.length ? html`<section class="card"><h4>Who to follow</h4>${who.slice(0, 5).map(u => html`<div class="person"><a href="#/u/${u.handle}">${avatar(u, 40)}</a>
+      <a class="grow clip" href="#/u/${u.handle}"><b class="clip">${u.name}</b><span class="muted small clip">@${u.handle}</span></a>
+      <button class="btn small" data-act="side-follow" data-id="${u.id}">Follow</button></div>`)}</section>` : ""}
+    <p class="side-foot">${CONFIG.name} · Feed, Photos, Chat, Video and Work in one place</p>`.s;
+  hydrate(el);
+  $("#side-search").onsubmit = e => { e.preventDefault(); const q = e.target.q.value.trim(); if (q) go("#/search?q=" + encodeURIComponent(q)); };
+}
+wide.addEventListener("change", () => side(true));
 
 /* one click handler for the whole app: [data-act] buttons call ctx.handlers (view) or global handlers */
 document.addEventListener("click", async e => {
@@ -90,6 +110,7 @@ document.addEventListener("submit", async e => {
 
 const setCount = (btn, n, on, cls) => { btn.classList.toggle(cls, on); btn.querySelector("span").textContent = n || ""; };
 const global = {
+  async "side-follow"(b) { await api.follow({ user: b.dataset.id }); b.textContent = "Following"; b.classList.add("ghost"); b.disabled = true; },
   async like(b) { const r = await api.toggle_like({ id: +b.dataset.id }); setCount(b, r.like_count, r.liked, "on-like"); },
   async repost(b) { const r = await api.repost({ id: +b.dataset.id }); setCount(b, r.repost_count, r.reposted, "on-repost"); toast(r.reposted ? "Reposted" : "Repost removed"); },
   "open-post"(el, e) { if (!e.target.closest("a")) go("#/p/" + el.dataset.id); },

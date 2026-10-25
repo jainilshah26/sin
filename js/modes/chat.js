@@ -9,13 +9,17 @@ export const routes = { chat: list, "chat/:id": room };
 const title = c => c.is_group ? c.title : c.members[0] ? c.members[0].name : "Just you";
 const face = (c, size) => c.is_group ? html`<span class="av av-txt group" style="width:${size}px;height:${size}px">${c.title.slice(0, 1).toUpperCase()}</span>` : avatar(c.members[0], size);
 
+/* The list of chats. On laptops it stays on the left while a chat is open (two panes); on phones it is its own screen. */
+const convList = (convs, active) => html`<div class="row pad"><h2 class="grow">Chats</h2><button class="btn small" data-act="new-chat">${icon("plus")} New</button></div>
+  ${convs.length ? convs.map(c => html`<a class="conv ${c.unread ? "unread" : ""} ${c.id === active ? "on" : ""}" href="#/chat/${c.id}">${face(c, 48)}
+    <div class="grow clip"><b>${title(c)}</b><div class="muted small clip">${c.last ? (c.last.sender_id === ctx.me.id ? "You: " : "") + (c.last.body || (c.last.has_media ? "📷 Photo" : "")) : c.is_group ? `${c.members.length + 1} members` : "Say hi"}</div></div>
+    <div class="end-col"><span class="muted small">${c.last ? ago(c.last.created_at) : ""}</span>${c.unread && c.id !== active ? html`<i class="badge on">${c.unread}</i>` : ""}</div></a>`)
+  : empty("No chats yet.", html`<button class="btn" data-act="new-chat">Start a chat</button>`)}`;
+
 async function list(el) {
   const convs = await api.conversations();
-  draw(el, html`<div class="row pad"><h2 class="grow">Chats</h2><button class="btn small" data-act="new-chat">${icon("plus")} New</button></div>
-    ${convs.length ? convs.map(c => html`<a class="conv ${c.unread ? "unread" : ""}" href="#/chat/${c.id}">${face(c, 48)}
-      <div class="grow clip"><b>${title(c)}</b><div class="muted small clip">${c.last ? (c.last.sender_id === ctx.me.id ? "You: " : "") + (c.last.body || (c.last.has_media ? "📷 Photo" : "")) : c.is_group ? `${c.members.length + 1} members` : "Say hi"}</div></div>
-      <div class="end-col"><span class="muted small">${c.last ? ago(c.last.created_at) : ""}</span>${c.unread ? html`<i class="badge on">${c.unread}</i>` : ""}</div></a>`)
-    : empty("No chats yet.", html`<button class="btn" data-act="new-chat">Start a chat</button>`)}`);
+  draw(el, html`<div class="chat-split list-only"><div class="conv-col">${convList(convs)}</div>
+    <div class="chat-empty">${icon("chat")}<p>Pick a chat on the left, or start a new one.</p></div></div>`);
   on({ "new-chat": newChat });
   live(e => { if (e.type === "message" || e.type === "read") route(); });
 }
@@ -55,15 +59,17 @@ async function newChat() {
 
 async function room(el, { id }) {
   const conv = +id;
-  let d = await api.get_messages({ conv, before: null });
+  let [d, convs] = await Promise.all([api.get_messages({ conv, before: null }), api.conversations()]);
   const c = d.conversation, people = Object.fromEntries(c.members.map(u => [u.id, u]));
-  draw(el, html`<div class="chat">
-    <div class="bar"><a class="icon-btn" href="#/chat" aria-label="Back">${icon("back")}</a>${face(c, 36)}
+  draw(el, html`<div class="chat-split"><div class="conv-col">${convList(convs, conv)}</div><div class="chat">
+    <div class="bar"><a class="icon-btn back" href="#/chat" aria-label="Back">${icon("back")}</a>${face(c, 36)}
       <div class="grow clip">${c.is_group ? html`<b>${c.title}</b><div class="muted small clip">${c.members.map(u => u.name).join(", ")}, you</div>`
         : c.members[0] ? html`<a href="#/u/${c.members[0].handle}"><b>${c.members[0].name}</b></a><div class="muted small">@${c.members[0].handle}</div>` : ""}</div></div>
     <div class="msgs" role="log" aria-live="polite"></div>
     <form class="msg-box" data-form="send"><button type="button" class="icon-btn" data-act="attach" aria-label="Send a photo or video">${icon("image")}</button>
-      <textarea name="body" rows="1" placeholder="Message" maxlength="4000" aria-label="Message"></textarea><button class="icon-btn send" aria-label="Send">${icon("send")}</button></form></div>`);
+      <textarea name="body" rows="1" placeholder="Message" maxlength="4000" aria-label="Message"></textarea><button class="icon-btn send" aria-label="Send">${icon("send")}</button></form></div></div>`);
+  const col = el.querySelector(".conv-col");
+  const relist = async () => { if (getComputedStyle(col).display !== "none") { col.innerHTML = convList(await api.conversations(), conv).s; hydrate(col); } };
   const box = el.querySelector(".msgs"), input = el.querySelector("textarea");
   const paint = () => {
     const mine = d.messages.filter(m => m.sender_id === ctx.me.id), lastMine = mine.at(-1);
@@ -88,7 +94,8 @@ async function room(el, { id }) {
     send: async (f, v) => { if (!v.body.trim()) return; input.value = ""; try { await send(v.body, []); } catch (e) { input.value = v.body; throw e; } input.focus(); },
     attach: async () => { const files = await M.pick("image/*,video/*", true); if (!files.length) return; toast("Sending…"); const ms = []; for (const f of files.slice(0, 10)) ms.push(await M.any(f)); await send("", ms); },
   });
-  live(async e => { if (e.conversation_id === conv) { await reload(); if (e.type === "message") read(); } });
+  on({ "new-chat": newChat });
+  live(async e => { if (e.conversation_id === conv) { await reload(); if (e.type === "message") read(); } if (e.type === "message") relist(); });
   const vis = () => read(); document.addEventListener("visibilitychange", vis);
   ctx.cleanups.push(() => document.removeEventListener("visibilitychange", vis));
 }
