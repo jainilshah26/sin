@@ -5,6 +5,7 @@ import { CONFIG } from "./config.js";
 import { html, raw, $, icon, avatar, who, postCard, empty, loading, hydrate, toast, sheet, ask, confirmSheet, ago, rich, count, plural } from "./ui.js";
 import * as compose from "./compose.js";
 import { themePicker, setTheme } from "./theme.js";
+import { showcase, startShowcase } from "./welcome.js";
 import * as feed from "./modes/feed.js";
 import * as photos from "./modes/photos.js";
 import * as chat from "./modes/chat.js";
@@ -312,17 +313,26 @@ async function mod(el) {
 
 /* ---------- sign in and onboarding ---------- */
 function authScreen(mode = "in") {
+  const up = mode === "up";
   app.className = "";
-  app.innerHTML = html`<div class="auth"><h1 class="logo big">${CONFIG.name}</h1>
-    <p class="muted">Posts, photos, chat, videos and work. One account.</p>
-    ${cloud ? "" : html`<p class="chip warn">Offline test mode: accounts live in this browser. Open a second tab to chat with yourself.</p>`}
-    <form class="card stack" id="auth"><h3>${mode === "in" ? "Log in" : "Create your account"}</h3>
-      <label>Email<input name="email" type="email" autocomplete="email" required></label>
-      <label>Password<input name="password" type="password" autocomplete="${mode === "in" ? "current-password" : "new-password"}" minlength="8" required></label>
-      <button class="btn">${mode === "in" ? "Log in" : "Sign up"}</button>
-      ${mode === "in" ? html`<button type="button" class="link small" id="forgot">Forgot password?</button>` : ""}
-      <p class="err" role="alert">${authLink.error || ""}</p></form>
-    <button class="link" id="swap">${mode === "in" ? "New here? Create an account" : "Have an account? Log in"}</button>${themePicker()}</div>`.s;
+  app.innerHTML = html`<div class="welcome">
+    <div class="w-brand"><h1 class="logo big">${CONFIG.name}</h1>
+      <p class="w-tag">${up ? "Join to share, chat, watch and find work, all with one account." : "Posts, photos, chat, videos and work. One account."}</p></div>
+    <div class="w-form">
+      ${cloud ? "" : html`<p class="chip warn">Offline test mode: accounts live in this browser. Open a second tab to chat with yourself.</p>`}
+      <form class="card stack" id="auth"><h3>${up ? "Create your account" : "Log in"}</h3>
+        ${up ? html`<p class="muted small">It's free. Your one profile works across Feed, Photos, Chat, Video and Work.</p>` : ""}
+        <label>Email<input name="email" type="email" autocomplete="email" required></label>
+        <label>Password<input name="password" type="password" autocomplete="${up ? "new-password" : "current-password"}" minlength="8" required placeholder="${up ? "At least 8 characters" : ""}"></label>
+        <button class="btn">${up ? "Sign up" : "Log in"}</button>
+        ${up ? "" : html`<button type="button" class="link small" id="forgot">Forgot password?</button>`}
+        <p class="err" role="alert">${authLink.error || ""}</p></form>
+      <div class="card w-swap"><button class="link" id="swap">${up ? "Have an account? Log in" : "New here? Create an account"}</button></div>
+      ${themePicker()}
+    </div>
+    ${showcase()}
+  </div>`.s;
+  startShowcase(app.querySelector(".welcome"));
   authLink.error = null;
   $("#swap").onclick = () => authScreen(mode === "in" ? "up" : "in");
   if ($("#forgot")) $("#forgot").onclick = () => forgotScreen($("#auth").email.value);
