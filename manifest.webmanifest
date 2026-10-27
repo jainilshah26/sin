@@ -1,7 +1,7 @@
 {
   "name": "Sin",
   "short_name": "Sin",
-  "description": "Posts, photos, chat, videos and work in one app.",
+  "description": "Everyone is a sinner. Posts, photos, chat, videos and work in one app.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

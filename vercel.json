@@ -54,5 +54,11 @@
         }
       ]
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/(login|signup|forgot-password)",
+      "destination": "/index.html"
+    }
   ]
 }

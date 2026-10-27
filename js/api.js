@@ -125,7 +125,7 @@ export const api = new Proxy({
     email = String(email).trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Enter a valid email.");
     if (cloud) {
-      const { error } = await (await sb()).auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname, captchaToken });
+      const { error } = await (await sb()).auth.resetPasswordForEmail(email, { redirectTo: location.origin + "/", captchaToken });
       if (error) throw new Error(/rate limit|security purposes/i.test(error.message) ? "Too many reset emails. Wait a few minutes and try again." : error.message);
       return {};
     }
@@ -133,7 +133,7 @@ export const api = new Proxy({
     if (!u) return {};
     const token = [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, "0")).join("");
     s.resets = { ...(s.resets || {}), [token]: { id: u.id, exp: Date.now() + 3600e3 } }; saveState(s);
-    return { link: location.pathname + location.search + "#/reset/" + token };
+    return { link: "/" + location.search + "#/reset/" + token };
   },
   /* New password for whoever is signed in: after a reset link, or from Settings. */
   async setPassword(password) {

@@ -236,7 +236,10 @@ label.check input { width: auto; }
    phone: logo, form, then the showcase below.  900px+: the phone showcase on the left, the form on the right (like Instagram). */
 .welcome { max-width: 460px; margin: 0 auto; padding: 32px 16px 48px; display: grid; gap: 22px; grid-template-areas: "brand" "form" "show"; }
 .w-brand { grid-area: brand; text-align: center; }
-.w-tag { color: var(--muted); font-size: 17px; margin-top: 6px; }
+.w-motto { margin-top: 6px; font-size: 22px; font-weight: 800; letter-spacing: -.01em;
+  background: linear-gradient(90deg, #2563eb, #db2777, #f59e0b); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.w-tag { color: var(--muted); font-size: 16px; margin-top: 4px; }
+.auth .w-motto { margin-top: -8px; }
 .w-form { grid-area: form; display: grid; gap: 14px; }
 .w-form .card { margin: 0; }
 .w-form .theme-pick { justify-self: center; width: min(100%, 320px); }
@@ -365,3 +368,4 @@ label.check input { width: auto; }
 .side .person { padding: 8px 0; }
 .side-foot { font-size: 12px; color: var(--muted); padding: 0 4px; }
 .captcha { min-height: 65px; }
+.w-brand .logo.big { text-align: inherit; }

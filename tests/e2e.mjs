@@ -14,7 +14,8 @@ const SEC = process.env.E2E_DIST ? Object.fromEntries(JSON.parse(fs.readFileSync
 fs.mkdirSync(shots, { recursive: true });
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".webmanifest": "application/manifest+json" };
 const server = http.createServer((req, res) => {
-  const f = path.join(root, decodeURIComponent(new URL(req.url, "http://x").pathname.replace(/\/$/, "/index.html")));
+  const page = new URL(req.url, "http://x").pathname.replace(/^\/(login|signup|forgot-password)$/, "/");   // as vercel.json rewrites
+  const f = path.join(root, decodeURIComponent(page.replace(/\/$/, "/index.html")));
   if (!f.startsWith(root) || !fs.existsSync(f)) { res.writeHead(404); return res.end(); }
   res.writeHead(200, { ...SEC, "content-type": TYPES[path.extname(f)] || "application/octet-stream" }); fs.createReadStream(f).pipe(res);
 }).listen(0);
@@ -41,8 +42,23 @@ try {
   console.log("Accounts");
   const A = await page("alice");
   await shot(A, "01-login");
+  const where = p => new URL(p.url()).pathname;
+  ok(where(A) === "/login" && await A.title() === "Log in · Sin", "the welcome screen's address is /login");
+  ok(await A.isVisible(".w-motto:has-text('Everyone is a sinner.')"), "tagline: Everyone is a sinner.");
+  await A.click("#swap"); await A.waitForSelector("text=Create your account");
+  ok(where(A) === "/signup" && new URL(A.url()).search === "?offline", "Create an account goes to /signup (keeping ?offline)");
+  await A.goBack(); await A.waitForSelector("#auth h3:has-text('Log in')");
+  ok(where(A) === "/login", "the back button returns to log in");
+  await A.goForward(); await A.waitForSelector("text=Create your account"); ok(where(A) === "/signup", "and forward to sign up");
+  await A.click("#swap"); await A.waitForSelector("#auth h3:has-text('Log in')"); await A.click("#forgot"); await A.waitForSelector("#fp");
+  ok(where(A) === "/forgot-password", "Forgot password? has its own address");
+  await A.click("#back-login"); await A.waitForSelector("#auth h3:has-text('Log in')");
+  await A.goto(URL_.replace("/?", "/signup?")); await A.waitForSelector("text=Create your account");
+  ok(where(A) === "/signup", "opening /signup directly shows sign up");
+  await A.click("#swap"); await A.waitForSelector("#auth h3:has-text('Log in')");
   await signUp(A, "alice@example.com", "Alice Ng", "alice");
   ok(await A.isVisible("text=Your timeline is empty"), "Alice lands on an empty Feed");
+  ok(where(A) === "/", "once signed in, the address is the app's own again");
   const B = await page("bob");
   ok(await B.isVisible("text=Log in"), "a second tab is signed out (sessions are per tab)");
   await signUp(B, "bob@example.com", "Bob Ray", "bob");
@@ -197,7 +213,7 @@ try {
   await B.click("[data-act=signout]"); await B.waitForSelector("#auth"); await B.fill("[name=email]", "bob@example.com"); await B.fill("[name=password]", "third-pass1");
   await B.click("#auth button.btn"); await B.waitForSelector(".tabs"); ok(true, "change password from Settings");
   await B.goto(URL_ + "#/settings"); await B.click("[data-act=signout]"); await B.waitForSelector("#auth");
-  await B.goto(URL_ + "#/reset/0123456789abcdef"); await B.reload(); await B.waitForSelector("#auth");
+  await B.goto(URL_ + "#/reset/0123456789abcdef"); await B.waitForSelector("#auth");
   ok(await B.isVisible("text=That reset link has expired or was already used."), "a used or made-up reset link is refused");
   await B.fill("[name=email]", "bob@example.com"); await B.fill("[name=password]", "third-pass1"); await B.click("#auth button.btn"); await B.waitForSelector(".tabs");
   console.log("Bot check (Cloudflare Turnstile, faked here)");

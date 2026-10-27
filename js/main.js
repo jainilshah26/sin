@@ -313,11 +313,29 @@ async function mod(el) {
 }
 
 /* ---------- sign in and onboarding ---------- */
-function authScreen(mode = "in") {
+/* Signed-out screens have their own addresses (sinners.in/login, /signup, /forgot-password), so the address bar,
+   the back button and shared links match what's on screen. vercel.json serves the app at those paths. */
+const AUTH_PATHS = { in: "/login", up: "/signup", forgot: "/forgot-password" };
+const AUTH_TITLES = { in: "Log in", up: "Sign up", forgot: "Reset your password" };
+const screenFromPath = () => ({ "/signup": "up", "/forgot-password": "forgot" })[location.pathname] || "in";
+const isAuthPath = () => Object.values(AUTH_PATHS).includes(location.pathname);
+function setAuthPath(screen, push) {
+  if (location.pathname !== AUTH_PATHS[screen] || location.hash) history[push ? "pushState" : "replaceState"](null, "", AUTH_PATHS[screen] + location.search);
+  document.title = `${AUTH_TITLES[screen]} · ${CONFIG.name}`;
+}
+const showSignedOut = (push = false) => (screenFromPath() === "forgot" ? forgotScreen("", push) : authScreen(screenFromPath(), push));
+window.addEventListener("popstate", () => {
+  if (ctx.me) { if (isAuthPath()) history.replaceState(null, "", "/" + location.search); return; }
+  if ($("#auth, #fp")) showSignedOut();   // back/forward between log in, sign up and forgot password
+});
+
+function authScreen(mode = "in", push = false) {
   const up = mode === "up";
+  setAuthPath(mode, push);
   app.className = "";
   app.innerHTML = html`<div class="welcome">
     <div class="w-brand"><h1 class="logo big">${CONFIG.name}</h1>
+      <p class="w-motto">Everyone is a sinner.</p>
       <p class="w-tag">${up ? "Join to share, chat, watch and find work, all with one account." : "Posts, photos, chat, videos and work. One account."}</p></div>
     <div class="w-form">
       ${cloud ? "" : html`<p class="chip warn">Offline test mode: accounts live in this browser. Open a second tab to chat with yourself.</p>`}
@@ -329,15 +347,15 @@ function authScreen(mode = "in") {
         <button class="btn">${up ? "Sign up" : "Log in"}</button>
         ${up ? "" : html`<button type="button" class="link small" id="forgot">Forgot password?</button>`}
         <p class="err" role="alert">${authLink.error || ""}</p></form>
-      <div class="card w-swap"><button class="link" id="swap">${up ? "Have an account? Log in" : "New here? Create an account"}</button></div>
+      <div class="card w-swap"><a class="link" id="swap" href="${(up ? AUTH_PATHS.in : AUTH_PATHS.up) + location.search}">${up ? "Have an account? Log in" : "New here? Create an account"}</a></div>
       ${themePicker()}
     </div>
     ${showcase()}
   </div>`.s;
   startShowcase(app.querySelector(".welcome"));
   authLink.error = null;
-  $("#swap").onclick = () => authScreen(mode === "in" ? "up" : "in");
-  if ($("#forgot")) $("#forgot").onclick = () => forgotScreen($("#auth").email.value);
+  $("#swap").onclick = e => { e.preventDefault(); authScreen(up ? "in" : "up", true); };
+  if ($("#forgot")) $("#forgot").onclick = () => forgotScreen($("#auth").email.value, true);
   const check = captcha($("#auth .captcha"));
   $("#auth").onsubmit = async e => {
     e.preventDefault(); const f = e.target, b = f.querySelector("button.btn"); b.disabled = true;
@@ -346,16 +364,17 @@ function authScreen(mode = "in") {
   };
 }
 /* step 1 of a reset: ask for the email and send the link */
-function forgotScreen(email = "") {
+function forgotScreen(email = "", push = false) {
+  setAuthPath("forgot", push);
   app.className = "";
-  app.innerHTML = html`<div class="auth"><h1 class="logo big">${CONFIG.name}</h1>
+  app.innerHTML = html`<div class="auth"><h1 class="logo big">${CONFIG.name}</h1><p class="w-motto">Everyone is a sinner.</p>
     <form class="card stack" id="fp"><h3>Reset your password</h3>
       <p class="muted small">Enter the email you signed up with. We'll send you a link to choose a new password.</p>
       <label>Email<input name="email" type="email" autocomplete="email" value="${email}" required autofocus></label>
       <div class="captcha" hidden></div>
       <button class="btn">Send reset link</button><p class="err" role="alert"></p></form>
-    <button class="link" id="back-login">Back to log in</button></div>`.s;
-  $("#back-login").onclick = () => authScreen();
+    <a class="link" id="back-login" href="${AUTH_PATHS.in + location.search}">Back to log in</a></div>`.s;
+  $("#back-login").onclick = e => { e.preventDefault(); authScreen("in", true); };
   const check = captcha($("#fp .captcha"));
   $("#fp").onsubmit = async e => {
     e.preventDefault(); const f = e.target, b = f.querySelector("button"); b.disabled = true;
@@ -364,7 +383,7 @@ function forgotScreen(email = "") {
       f.innerHTML = html`<h3>Check your email</h3>
         <p>If <b>${f.email.value.trim()}</b> has an account, a link to reset your password is on its way. It can take a few minutes; check your spam folder too.</p>
         ${r.link ? html`<p class="chip warn">Offline test mode has no email. This is the link it would contain:</p><a class="btn" id="offline-link" href="${r.link}">Open reset link</a>` : ""}`.s;
-      if (r.link) $("#offline-link").onclick = ev => { ev.preventDefault(); location.hash = r.link.split("#")[1]; start(); };
+      if (r.link) $("#offline-link").onclick = ev => { ev.preventDefault(); history.replaceState(null, "", r.link); start(); };
     } catch (err) { f.querySelector(".err").textContent = err.message; b.disabled = false; check.reset(); }
   };
 }
@@ -404,11 +423,13 @@ function onboard() {
 async function start() {
   try {
     const s = await api.init();
-    if (!s) return authScreen();
+    if (!s) return showSignedOut();
     if (authLink.recovery) return newPasswordScreen();
     ctx.me = ctx.me || await api.me();
     if (!ctx.me) return onboard();
   } catch (e) { app.className = ""; app.innerHTML = empty(e.message, html`<button class="btn" onclick="location.reload()">Try again</button>`).s; return; }
+  if (isAuthPath()) history.replaceState(null, "", "/" + location.search + location.hash);   // signed in: back to the app's own address
+  document.title = CONFIG.name;
   shell(); route();
 }
 window.addEventListener("hashchange", route);
