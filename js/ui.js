@@ -92,6 +92,11 @@ export const actions = p => html`<div class="actions">
   ${p.kind === "video" ? html`<span class="act muted">${plural(p.view_count, "view")}</span>` : ""}
 </div>`;
 
+/* "Made in India" with a small drawn flag (the 🇮🇳 emoji shows as the letters "IN" on Windows) */
+const FLAG = raw(`<svg class="flag" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#fff"/><rect width="30" height="6.67" fill="#ff9933"/>
+  <rect y="13.33" width="30" height="6.67" fill="#138808"/><circle cx="15" cy="10" r="2.6" fill="none" stroke="#000080" stroke-width=".6"/><circle cx="15" cy="10" r=".6" fill="#000080"/></svg>`);
+export const madeIn = () => html`<p class="made-in">Made in India ${FLAG}</p>`;
+
 export const empty = (text, extra = "") => html`<div class="empty"><p>${text}</p>${extra}</div>`;
 export const loading = () => html`<div class="spin" aria-label="Loading"></div>`;
 

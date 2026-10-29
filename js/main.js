@@ -2,7 +2,7 @@
    (profiles, post threads, notifications, search, settings, moderation). */
 import { api, cloud, onLive, authLink } from "./api.js";
 import { CONFIG } from "./config.js";
-import { html, raw, $, icon, avatar, who, postCard, empty, loading, hydrate, toast, sheet, ask, confirmSheet, ago, rich, count, plural } from "./ui.js";
+import { html, raw, $, icon, avatar, who, postCard, empty, loading, hydrate, toast, sheet, ask, confirmSheet, ago, rich, count, plural, madeIn } from "./ui.js";
 import * as compose from "./compose.js";
 import { themePicker, setTheme } from "./theme.js";
 import { showcase, startShowcase } from "./welcome.js";
@@ -92,7 +92,7 @@ async function side(force) {
     ${who.length ? html`<section class="card"><h4>Who to follow</h4>${who.slice(0, 5).map(u => html`<div class="person"><a href="#/u/${u.handle}">${avatar(u, 40)}</a>
       <a class="grow clip" href="#/u/${u.handle}"><b class="clip">${u.name}</b><span class="muted small clip">@${u.handle}</span></a>
       <button class="btn small" data-act="side-follow" data-id="${u.id}">Follow</button></div>`)}</section>` : ""}
-    <p class="side-foot">${CONFIG.name} · Feed, Photos, Chat, Video and Work in one place</p>`.s;
+    <p class="side-foot">${CONFIG.name} · Feed, Photos, Chat, Video and Work in one place</p>${madeIn()}`.s;
   hydrate(el);
   $("#side-search").onsubmit = e => { e.preventDefault(); const q = e.target.q.value.trim(); if (q) go("#/search?q=" + encodeURIComponent(q)); };
 }
@@ -287,7 +287,8 @@ async function settings(el, { q }) {
     <form class="card stack" data-form="password"><h3>Change password</h3>
       <label>New password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
       <label>Type it again<input name="again" type="password" autocomplete="new-password" minlength="8" required></label>
-      <button class="btn">Change password</button></form>`);
+      <button class="btn">Change password</button></form>
+    <footer class="settings-foot">${madeIn()}</footer>`);
   if (q.get("pro")) $("#pro").scrollIntoView();
   const saveMe = async (patch) => { ctx.me = await api.update_profile({ name: me.name, bio: me.bio, avatar_url: me.avatar_url, ...patch }); shell(); route(); };
   on({
@@ -351,6 +352,7 @@ function authScreen(mode = "in", push = false) {
       ${themePicker()}
     </div>
     ${showcase()}
+    <footer class="w-foot">${madeIn()}</footer>
   </div>`.s;
   startShowcase(app.querySelector(".welcome"));
   authLink.error = null;
@@ -373,7 +375,7 @@ function forgotScreen(email = "", push = false) {
       <label>Email<input name="email" type="email" autocomplete="email" value="${email}" required autofocus></label>
       <div class="captcha" hidden></div>
       <button class="btn">Send reset link</button><p class="err" role="alert"></p></form>
-    <a class="link" id="back-login" href="${AUTH_PATHS.in + location.search}">Back to log in</a></div>`.s;
+    <a class="link" id="back-login" href="${AUTH_PATHS.in + location.search}">Back to log in</a><footer class="w-foot">${madeIn()}</footer></div>`.s;
   $("#back-login").onclick = e => { e.preventDefault(); authScreen("in", true); };
   const check = captcha($("#fp .captcha"));
   $("#fp").onsubmit = async e => {
